@@ -13,7 +13,7 @@ class LinenAudioProcessorEditor final : public juce::AudioProcessorEditor
 {
 public:
     static constexpr int designWidth = 980;
-    static constexpr int designHeight = 620;
+    static constexpr int designHeight = 720;
 
     explicit LinenAudioProcessorEditor (LinenAudioProcessor&);
     ~LinenAudioProcessorEditor() override;
@@ -38,6 +38,7 @@ private:
         void attach (linen::LinenKnob&, const char* paramId, const juce::String& tooltip);
         void attach (linen::LinenPill&, const char* paramId, const juce::String& tooltip);
         void paintHeader (juce::Graphics&);
+        void paintSectionTitle (juce::Graphics&, const juce::String& title, int x, int y, float alpha);
         void updateDimming (double timestampSeconds);
 
         LinenAudioProcessor& processor;
@@ -45,11 +46,18 @@ private:
 
         linen::SpectrumDisplay display;
 
+        // Preamp + 1073-style EQ
+        linen::LinenKnob drive { "Drive", 78.0f };
+        linen::LinenKnob lowGain { "Low", 54.0f }, midGain { "Mid", 54.0f }, highGain { "High 12k", 54.0f };
+        linen::LinenStepper highPass, lowFreq, midFreq;
+
+        // De-harsh
         linen::LinenSegmented mode;
         linen::LinenPill glare { "Glare" }, body { "Body" }, delta { "Delta" }, sidechain { "Sidechain" };
-
         linen::LinenKnob depth { "Depth", 78.0f }, detail { "Detail", 58.0f }, attack { "Attack", 58.0f },
                          release { "Release", 58.0f }, maxCut { "Max cut", 58.0f };
+
+        // Output
         linen::LinenKnob input { "Input", 58.0f }, mix { "Mix", 58.0f }, output { "Output", 58.0f };
 
         std::vector<std::unique_ptr<SliderAttachment>> sliderAttachments;

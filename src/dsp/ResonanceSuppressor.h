@@ -66,16 +66,19 @@ public:
     int getFftSize() const noexcept { return fftSize; }
 
     /** Processes main in place. detector holds the signal to analyse (mono,
-        same length): the main input or an external sidechain. */
-    void process (juce::AudioBuffer<float>& main, const float* detector);
+        same length): the main input or an external sidechain. Pass
+        detectorIsMainSum = true when detector is the plain average of main's
+        channels; its spectrum is then taken from theirs (one FFT fewer). */
+    void process (juce::AudioBuffer<float>& main, const float* detector, bool detectorIsMainSum);
 
     DeharshDisplay& getDisplay() noexcept { return display; }
 
 private:
     void processFrame();
+    void forwardChannels();
     void analyseDetector();
     void computeCuts();
-    void applyToChannel (int channel);
+    void inverseChannels();
     void publishDisplay();
 
     // Mean of src over [k·2^(-w/2), k·2^(w/2)] for every bin (w in octaves).
@@ -100,15 +103,20 @@ private:
     std::vector<std::vector<float>> inFifo, outFifo;
     std::vector<float> detFifo;
     int fifoPos = 0, hopCounter = 0;
+    juce::uint32 frameCounter = 0;
+    bool detectorIsMainMix = true;
 
     // Per-frame scratch, all sized in prepare().
-    std::vector<float> fftBuffer, detFrame, levelDb, envelope, scratchA, scratchB;
+    std::vector<std::complex<float>> timeData, freqData, detSpectrum;
+    std::vector<std::vector<std::complex<float>>> spectra;  // per channel, bins 0..N/2
+    std::vector<float> detFrame, levelDb, envelope, scratchA, scratchB;
     std::vector<float> excessAverage, cutTarget, cutSmoothed, cutFinal, gains, binFreq, prefix;
     std::vector<float> binOctave, glareWeight, focusMask;
     float focusMaskLow = -1.0f, focusMaskHigh = -1.0f;
     std::vector<int> queue;
 
     PitchTracker pitchTracker;
+    PitchTracker::Result lastPitch;
     float protectedPitch = 0.0f, protectAmount = 0.0f;
 
     DeharshDisplay display;

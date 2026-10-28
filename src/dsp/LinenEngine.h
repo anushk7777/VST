@@ -2,6 +2,8 @@
 
 #include <juce_dsp/juce_dsp.h>
 
+#include "Eq1073.h"
+#include "Preamp.h"
 #include "ResonanceSuppressor.h"
 
 namespace linen
@@ -15,13 +17,16 @@ struct EngineParams
     float outputGainDb = 0.0f;
     float mix          = 1.0f;  // 0 = dry only, 1 = processed only
 
+    float preampDrive = 0.0f;       // 0..1; 0 = preamp bypassed
+    EqParams eq;
+
     DeharshParams deharsh;
     bool deharshSidechain = false;  // detect from the sidechain input instead of the vocal
 };
 
 /** The whole Linen signal chain, independent of the plugin wrapper.
 
-    Input gain → [Preamp → EQ] → De-harsh → [Comp → Air] → Output gain → Mix
+    Input gain → Preamp → EQ → De-harsh → [Comp → Air] → Output gain → Mix
 
     The dry signal for Mix is taken before the input gain and delayed by the
     chain's latency, so dry and wet stay sample-aligned at any Mix setting. */
@@ -60,6 +65,8 @@ private:
     juce::SmoothedValue<float, juce::ValueSmoothingTypes::Multiplicative> inputGain { 1.0f }, outputGain { 1.0f };
     juce::SmoothedValue<float> mix { 1.0f };
 
+    Preamp preamp;
+    Eq1073 eq;
     ResonanceSuppressor deharsh;
     std::vector<float> detector;
 

@@ -100,4 +100,30 @@ private:
     int selected = 0;
 };
 
+/** A stepped switch shown as a small pill with its value, like a console's
+    frequency selector: click for the list, scroll or drag to step. */
+class LinenStepper final : public juce::Component,
+                           public juce::SettableTooltipClient
+{
+public:
+    explicit LinenStepper (juce::RangedAudioParameter& param);
+
+    void paint (juce::Graphics&) override;
+    void mouseEnter (const juce::MouseEvent&) override;
+    void mouseExit (const juce::MouseEvent&) override;
+    void mouseDown (const juce::MouseEvent&) override;
+    void mouseDrag (const juce::MouseEvent&) override;
+    void mouseUp (const juce::MouseEvent&) override;
+    void mouseWheelMove (const juce::MouseEvent&, const juce::MouseWheelDetails&) override;
+
+private:
+    void step (int delta);
+    int numSteps() const;
+
+    juce::RangedAudioParameter& parameter;
+    juce::ParameterAttachment attachment;
+    int index = 0, dragStartIndex = 0;
+    bool hovering = false, dragged = false;
+};
+
 } // namespace linen

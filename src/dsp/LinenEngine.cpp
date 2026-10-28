@@ -18,6 +18,8 @@ void Engine::prepare (double newSampleRate, int maxBlockSize, int numChannels)
 
     const juce::dsp::ProcessSpec spec { sampleRate, (juce::uint32) maxBlock, (juce::uint32) numChans };
 
+    preamp.prepare (sampleRate, maxBlock, numChans);
+    eq.prepare (sampleRate, numChans);
     deharsh.prepare (sampleRate, numChans);
     detector.assign ((size_t) maxBlock, 0.0f);
 
@@ -35,6 +37,8 @@ void Engine::prepare (double newSampleRate, int maxBlockSize, int numChannels)
 
 void Engine::reset()
 {
+    preamp.reset();
+    eq.reset();
     deharsh.reset();
     dryDelay.reset();
     testWetDelay.reset();
@@ -47,6 +51,8 @@ void Engine::reset()
 void Engine::setParams (const EngineParams& newParams)
 {
     params = newParams;
+    preamp.setDrive (params.preampDrive);
+    eq.setParams (params.eq);
     deharsh.setParams (params.deharsh);
 
     inputGain.setTargetValue (juce::Decibels::decibelsToGain (params.inputGainDb));
@@ -64,7 +70,7 @@ void Engine::setExtraWetLatencyForTesting (int samples)
 
 void Engine::updateLatency()
 {
-    latencySamples = deharsh.getLatencySamples() + testWetLatency;
+    latencySamples = preamp.getLatencySamples() + deharsh.getLatencySamples() + testWetLatency;
 
     dryDelay.setMaximumDelayInSamples (maxDelayFor (latencySamples));
     dryDelay.setDelay ((float) latencySamples);
@@ -111,6 +117,12 @@ void Engine::processChunk (juce::AudioBuffer<float>& buffer, const juce::AudioBu
             buffer.getWritePointer (ch)[i] *= g;
     }
 
+    juce::AudioBuffer<float> wet (buffer.getArrayOfWritePointers(), channels, numSamples);
+
+    // Colour first: preamp, then the console EQ.
+    preamp.process (wet);
+    eq.process (wet);
+
     // De-harsh, detecting from the vocal itself or from the sidechain.
     {
         const bool useSidechain = params.deharshSidechain && sidechain != nullptr && sidechain->getNumChannels() > 0;
@@ -127,8 +139,7 @@ void Engine::processChunk (juce::AudioBuffer<float>& buffer, const juce::AudioBu
                 detector[(size_t) i] += src[i] * norm;
         }
 
-        juce::AudioBuffer<float> wet (buffer.getArrayOfWritePointers(), channels, numSamples);
-        deharsh.process (wet, detector.data());
+        deharsh.process (wet, detector.data(), ! useSidechain);
     }
 
     if (testWetLatency > 0)

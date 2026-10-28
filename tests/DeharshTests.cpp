@@ -104,11 +104,11 @@ public:
     {
         beginTest ("Latency is one FFT length, scaled with sample rate");
         {
-            Engine engine;
-            engine.prepare (48000.0, block, 2);
-            expectEquals (engine.getLatencySamples(), 2048);
-            engine.prepare (96000.0, block, 2);
-            expectEquals (engine.getLatencySamples(), 4096);
+            ResonanceSuppressor suppressor;
+            suppressor.prepare (48000.0, 2);
+            expectEquals (suppressor.getLatencySamples(), 2048);
+            suppressor.prepare (96000.0, 2);
+            expectEquals (suppressor.getLatencySamples(), 4096);
         }
 
         beginTest ("Depth 0 is a clean, latency-aligned pass-through (sqrt-Hann WOLA reconstructs exactly)");

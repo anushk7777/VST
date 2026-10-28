@@ -300,4 +300,99 @@ void LinenSegmented::mouseDown (const juce::MouseEvent& e)
         attachment.setValueAsCompleteGesture ((float) index);
 }
 
+//==============================================================================
+LinenStepper::LinenStepper (juce::RangedAudioParameter& param)
+    : parameter (param),
+      attachment (param, [this] (float v) { index = juce::roundToInt (v); repaint(); })
+{
+    attachment.sendInitialUpdate();
+    setMouseCursor (juce::MouseCursor::PointingHandCursor);
+}
+
+int LinenStepper::numSteps() const
+{
+    return juce::jmax (1, parameter.getNumSteps());
+}
+
+void LinenStepper::step (int delta)
+{
+    const int next = juce::jlimit (0, numSteps() - 1, index + delta);
+    if (next != index)
+        attachment.setValueAsCompleteGesture ((float) next);
+}
+
+void LinenStepper::paint (juce::Graphics& g)
+{
+    using namespace palette;
+
+    const auto r = getLocalBounds().toFloat().reduced (0.5f);
+    const float radius = r.getHeight() * 0.5f;
+    const bool off = index == 0 && parameter.getText (0.0f, 32).equalsIgnoreCase ("off");
+
+    g.setColour (hovering ? cashmere : cashmere.withAlpha (0.55f));
+    g.fillRoundedRectangle (r, radius);
+    g.setColour (champagneDeep.withAlpha (hovering ? 0.8f : 0.5f));
+    g.drawRoundedRectangle (r, radius, 0.8f);
+
+    // Tiny chevrons either side say "this steps".
+    g.setColour (ink (hovering ? 0.55f : 0.3f));
+    const float cy = r.getCentreY();
+    for (const float x : { r.getX() + 8.0f, r.getRight() - 8.0f })
+    {
+        const float dir = x < r.getCentreX() ? -1.0f : 1.0f;
+        juce::Path chevron;
+        chevron.startNewSubPath (x - dir * 1.5f, cy - 3.0f);
+        chevron.lineTo (x + dir * 1.5f, cy);
+        chevron.lineTo (x - dir * 1.5f, cy + 3.0f);
+        g.strokePath (chevron, juce::PathStrokeType (1.0f, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
+    }
+
+    g.setColour (off ? ink (0.42f) : espresso);
+    g.setFont (fonts::sansMedium (10.0f, 0.06f));
+    g.drawText (parameter.getCurrentValueAsText(), r.reduced (12.0f, 0.0f), juce::Justification::centred, false);
+}
+
+void LinenStepper::mouseEnter (const juce::MouseEvent&) { hovering = true; repaint(); }
+void LinenStepper::mouseExit (const juce::MouseEvent&)  { hovering = false; repaint(); }
+
+void LinenStepper::mouseDown (const juce::MouseEvent&)
+{
+    dragStartIndex = index;
+    dragged = false;
+}
+
+void LinenStepper::mouseDrag (const juce::MouseEvent& e)
+{
+    const int delta = (e.getDistanceFromDragStartX() - e.getDistanceFromDragStartY()) / 14;
+    if (delta != 0)
+        dragged = true;
+
+    const int target = juce::jlimit (0, numSteps() - 1, dragStartIndex + delta);
+    if (target != index)
+        attachment.setValueAsCompleteGesture ((float) target);
+}
+
+void LinenStepper::mouseUp (const juce::MouseEvent& e)
+{
+    if (dragged || ! e.mouseWasClicked())
+        return;
+
+    juce::PopupMenu menu;
+    for (int i = 0; i < numSteps(); ++i)
+        menu.addItem (i + 1, parameter.getText (parameter.convertTo0to1 ((float) i), 32), true, i == index);
+
+    menu.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (this).withMinimumWidth (getWidth()),
+                        [safe = juce::Component::SafePointer<LinenStepper> (this)] (int result)
+                        {
+                            if (safe != nullptr && result > 0)
+                                safe->attachment.setValueAsCompleteGesture ((float) (result - 1));
+                        });
+}
+
+void LinenStepper::mouseWheelMove (const juce::MouseEvent&, const juce::MouseWheelDetails& wheel)
+{
+    if (std::abs (wheel.deltaY) > 0.0f)
+        step (wheel.deltaY > 0.0f ? 1 : -1);
+}
+
 } // namespace linen

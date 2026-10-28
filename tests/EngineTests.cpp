@@ -121,6 +121,53 @@ public:
             expectWithinAbsoluteError (dc.getSample (0, 6000), 0.1f * juce::Decibels::decibelsToGain (3.0f), 1.0e-4f);
         }
 
+        beginTest ("Mix stays comb-free with the preamp engaged (its oversampling is linear-phase)");
+        {
+            // At low level the preamp is linear, so 50% Mix must sum flat: any
+            // phase mismatch between dry and wet would show up as notches.
+            Engine engine;
+            auto p = neutral();
+            p.preampDrive = 0.5f;
+            p.mix = 0.5f;
+            engine.setParams (p);
+            engine.prepare (sr, block, 1);
+
+            const auto in = whiteNoise (1, 48000 * 4, 0.003f);
+            const auto out = runInBlocks (engine, in, block);
+            const int latency = engine.getLatencySamples();
+
+            juce::dsp::FFT fft (12);
+            std::vector<double> pin (2049, 0.0), pout (2049, 0.0);
+            std::vector<float> buf (8192);
+            for (int pos = 48000; pos + 4096 + latency < in.getNumSamples(); pos += 2048)
+            {
+                for (auto [src, offset, acc] : { std::tuple { &in, 0, &pin }, std::tuple { &out, latency, &pout } })
+                {
+                    std::fill (buf.begin(), buf.end(), 0.0f);
+                    for (int j = 0; j < 4096; ++j)
+                        buf[(size_t) j] = src->getSample (0, pos + offset + j)
+                                          * 0.5f * (1.0f - std::cos (juce::MathConstants<float>::twoPi * (float) j / 4096.0f));
+                    fft.performFrequencyOnlyForwardTransform (buf.data(), true);
+                    for (size_t k = 0; k < acc->size(); ++k)
+                        (*acc)[k] += (double) buf[k] * buf[k];
+                }
+            }
+
+            double worst = 0.0, worstHz = 0.0;
+            for (int k = 0; k < 2049; ++k)
+            {
+                const double hz = k * sr / 4096.0;
+                const double dev = std::abs (10.0 * std::log10 (pout[(size_t) k] / pin[(size_t) k]));
+                if (hz > 60.0 && hz < 18000.0 && dev > worst)
+                {
+                    worst = dev;
+                    worstHz = hz;
+                }
+            }
+            logMessage ("worst deviation 60 Hz-18 kHz: " + juce::String (worst, 2) + " dB at " + juce::String (worstHz, 0) + " Hz");
+            expectLessThan (worst, 0.5);
+        }
+
         beginTest ("Blocks larger than announced are handled");
         {
             Engine engine;

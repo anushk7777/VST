@@ -15,6 +15,14 @@ namespace id
     inline constexpr auto outputGain = "output_gain";
     inline constexpr auto mix        = "mix";
 
+    inline constexpr auto preampDrive = "preamp_drive";
+    inline constexpr auto eqHighPass  = "eq_high_pass";
+    inline constexpr auto eqLowFreq   = "eq_low_freq";
+    inline constexpr auto eqLowGain   = "eq_low_gain";
+    inline constexpr auto eqMidFreq   = "eq_mid_freq";
+    inline constexpr auto eqMidGain   = "eq_mid_gain";
+    inline constexpr auto eqHighGain  = "eq_high_gain";
+
     inline constexpr auto deharshDepth     = "deharsh_depth";
     inline constexpr auto deharshDetail    = "deharsh_detail";
     inline constexpr auto deharshAttack    = "deharsh_attack";
@@ -81,12 +89,41 @@ inline juce::AudioProcessorValueTreeState::ParameterLayout createLayout()
                                                      .withValueFromStringFunction ([] (const juce::String& text)
                                                                                    { return text.getFloatValue() / 100.0f; })));
 
-    // De-harsh
     using Bool = juce::AudioParameterBool;
     using Choice = juce::AudioParameterChoice;
     const auto percentAttributes = Attributes().withStringFromValueFunction (formatPercent)
                                                .withValueFromStringFunction ([] (const juce::String& text)
                                                                              { return text.getFloatValue() / 100.0f; });
+
+    // Preamp and 1073-style EQ
+    const auto eqGain = [] (float range)
+    {
+        return std::pair { juce::NormalisableRange<float> (-range, range, 0.1f),
+                           Attributes().withLabel ("dB").withStringFromValueFunction (formatDb) };
+    };
+
+    layout.add (std::make_unique<Float> (juce::ParameterID { id::preampDrive, version }, "Preamp Drive",
+                                         juce::NormalisableRange<float> (0.0f, 1.0f, 0.001f), 0.25f, percentAttributes));
+    layout.add (std::make_unique<Choice> (juce::ParameterID { id::eqHighPass, version }, "EQ High-pass",
+                                          juce::StringArray { "Off", "50 Hz", "80 Hz", "160 Hz", "300 Hz" }, 0));
+    layout.add (std::make_unique<Choice> (juce::ParameterID { id::eqLowFreq, version }, "EQ Low Freq",
+                                          juce::StringArray { "Off", "35 Hz", "60 Hz", "110 Hz", "220 Hz" }, 2));
+    {
+        auto [range, attributes] = eqGain (16.0f);
+        layout.add (std::make_unique<Float> (juce::ParameterID { id::eqLowGain, version }, "EQ Low Gain", range, 0.0f, attributes));
+    }
+    layout.add (std::make_unique<Choice> (juce::ParameterID { id::eqMidFreq, version }, "EQ Mid Freq",
+                                          juce::StringArray { "Off", "360 Hz", "700 Hz", "1.6 kHz", "3.2 kHz", "4.8 kHz", "7.2 kHz" }, 4));
+    {
+        auto [range, attributes] = eqGain (18.0f);
+        layout.add (std::make_unique<Float> (juce::ParameterID { id::eqMidGain, version }, "EQ Mid Gain", range, 0.0f, attributes));
+    }
+    {
+        auto [range, attributes] = eqGain (16.0f);
+        layout.add (std::make_unique<Float> (juce::ParameterID { id::eqHighGain, version }, "EQ High Gain (12 kHz)", range, 0.0f, attributes));
+    }
+
+    // De-harsh
 
     layout.add (std::make_unique<Float> (juce::ParameterID { id::deharshDepth, version }, "De-harsh Depth",
                                          juce::NormalisableRange<float> (0.0f, 15.0f, 0.01f), 5.0f,
@@ -126,6 +163,13 @@ struct Handles
         : inputGain        (*state.getRawParameterValue (id::inputGain)),
           outputGain       (*state.getRawParameterValue (id::outputGain)),
           mix              (*state.getRawParameterValue (id::mix)),
+          preampDrive      (*state.getRawParameterValue (id::preampDrive)),
+          eqHighPass       (*state.getRawParameterValue (id::eqHighPass)),
+          eqLowFreq        (*state.getRawParameterValue (id::eqLowFreq)),
+          eqLowGain        (*state.getRawParameterValue (id::eqLowGain)),
+          eqMidFreq        (*state.getRawParameterValue (id::eqMidFreq)),
+          eqMidGain        (*state.getRawParameterValue (id::eqMidGain)),
+          eqHighGain       (*state.getRawParameterValue (id::eqHighGain)),
           deharshDepth     (*state.getRawParameterValue (id::deharshDepth)),
           deharshDetail    (*state.getRawParameterValue (id::deharshDetail)),
           deharshAttack    (*state.getRawParameterValue (id::deharshAttack)),
@@ -148,6 +192,14 @@ struct Handles
         p.outputGainDb = outputGain.load();
         p.mix          = mix.load();
 
+        p.preampDrive  = preampDrive.load();
+        p.eq.highPass   = juce::roundToInt (eqHighPass.load());
+        p.eq.lowFreq    = juce::roundToInt (eqLowFreq.load());
+        p.eq.lowGainDb  = eqLowGain.load();
+        p.eq.midFreq    = juce::roundToInt (eqMidFreq.load());
+        p.eq.midGainDb  = eqMidGain.load();
+        p.eq.highGainDb = eqHighGain.load();
+
         auto& d = p.deharsh;
         d.depth       = deharshDepth.load();
         d.detail      = deharshDetail.load();
@@ -167,6 +219,13 @@ struct Handles
     std::atomic<float>& inputGain;
     std::atomic<float>& outputGain;
     std::atomic<float>& mix;
+    std::atomic<float>& preampDrive;
+    std::atomic<float>& eqHighPass;
+    std::atomic<float>& eqLowFreq;
+    std::atomic<float>& eqLowGain;
+    std::atomic<float>& eqMidFreq;
+    std::atomic<float>& eqMidGain;
+    std::atomic<float>& eqHighGain;
     std::atomic<float>& deharshDepth;
     std::atomic<float>& deharshDetail;
     std::atomic<float>& deharshAttack;

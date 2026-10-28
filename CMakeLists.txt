@@ -38,7 +38,9 @@ juce_add_module("${melatonin_blur_SOURCE_DIR}")
 # DSP code has no dependency on the plugin wrapper, so the tests and the render
 # tool compile exactly the same engine the plugin runs.
 set(LINEN_DSP_SOURCES
+    src/dsp/Eq1073.cpp
     src/dsp/LinenEngine.cpp
+    src/dsp/Preamp.cpp
     src/dsp/PitchTracker.cpp
     src/dsp/ResonanceSuppressor.cpp)
 
@@ -106,7 +108,8 @@ target_sources(LinenTests PRIVATE
     ${LINEN_DSP_SOURCES}
     tests/TestMain.cpp
     tests/EngineTests.cpp
-    tests/DeharshTests.cpp)
+    tests/DeharshTests.cpp
+    tests/PreampEqTests.cpp)
 target_include_directories(LinenTests PRIVATE src tests)
 target_compile_definitions(LinenTests PRIVATE ${LINEN_COMMON_DEFINITIONS})
 target_link_libraries(LinenTests

@@ -19,8 +19,8 @@ The full plan and the status of each phase are in [docs/PLAN.md](docs/PLAN.md).
 |---|---|---|
 | 1 | Scaffold, CI, Input/Mix/Output, latency-matched dry path, the Linen look | done |
 | 2 | De-harsh (resonance suppressor) and its spectrum display | done |
-| 3 | 1073-style preamp and EQ | next |
-| 4 | Silk compressor and Air | planned |
+| 3 | 1073-style preamp and EQ | done |
+| 4 | Silk compressor and Air | next |
 | 5 | Silk macro, presets, GUI polish | planned |
 | 6 | Auto-assist "Listen" button | planned |
 | 7 | Neural preamp (needs real 1073 recordings) | planned |
@@ -34,6 +34,20 @@ The full plan and the status of each phase are in [docs/PLAN.md](docs/PLAN.md).
 5. In a Mixer insert, open an empty slot and pick **Linen**.
 
 **Linen-Standalone-Windows** is the same thing as a standalone app, for a quick look without FL Studio.
+
+## Using the Preamp and EQ
+
+The preamp is modelled on the behaviour of a classic 1073-style class-A channel: an input transformer, a biased class-A gain stage and an output transformer, all run at 4× oversampling.
+
+| Control | What it does |
+|---|---|
+| **Drive** | Pushes the preamp. Low settings add a little density; higher settings thicken low notes (transformer iron) and add warm 2nd-harmonic bloom that grows on loud, belted lines and relaxes on soft ones. Drive changes colour, not loudness. At 0 the preamp is fully bypassed. |
+| **High-pass** | Off, 50, 80, 160 or 300 Hz at 18 dB/oct. 80 Hz is a good default for vocals. |
+| **Low** | Low shelf at 35, 60, 110 or 220 Hz, ±16 dB, with the gentle bump these shelves are known for. |
+| **Mid** | Bell at 360 Hz, 700 Hz, 1.6, 3.2, 4.8 or 7.2 kHz, ±18 dB. It is broad at small settings and narrows as you push it. |
+| **High 12k** | High shelf at 12 kHz, ±16 dB, for air and sheen. |
+
+Click a frequency selector for its list, or scroll/drag over it to step.
 
 ## Using De-harsh
 
@@ -52,7 +66,7 @@ De-harsh listens for frequencies that suddenly poke out above the rest of the vo
 | **Sidechain** | Detect from the sidechain input instead (e.g. duck a beat's harsh bits where the vocal sits). |
 | **Focus handles** | Drag the two gold handles on the display to limit where De-harsh works. Double-click resets. |
 
-Linen adds 2048 samples of latency at 44.1/48 kHz (about 43 ms). FL Studio compensates for it automatically.
+Linen adds about 2110 samples of latency at 44.1/48 kHz (about 44 ms). FL Studio compensates for it automatically.
 
 ## Build it yourself
 

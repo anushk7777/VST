@@ -77,7 +77,10 @@ void ResonanceSuppressor::prepare (double newSampleRate, int newNumChannels)
     outFifo.assign ((size_t) numChannels, std::vector<float> ((size_t) fftSize, 0.0f));
     detFifo.assign ((size_t) fftSize, 0.0f);
 
-    fftBuffer.assign ((size_t) fftSize * 2, 0.0f);
+    timeData.assign ((size_t) fftSize, {});
+    freqData.assign ((size_t) fftSize, {});
+    spectra.assign ((size_t) numChannels, std::vector<std::complex<float>> ((size_t) numBins));
+    detSpectrum.assign ((size_t) numBins, {});
     detFrame.assign ((size_t) fftSize, 0.0f);
 
     for (auto* v : { &levelDb, &envelope, &scratchA, &scratchB, &excessAverage, &cutTarget,
@@ -117,6 +120,8 @@ void ResonanceSuppressor::reset()
 
     fifoPos = 0;
     hopCounter = 0;
+    frameCounter = 0;
+    lastPitch = {};
     protectedPitch = 0.0f;
     protectAmount = 0.0f;
 
@@ -128,8 +133,9 @@ void ResonanceSuppressor::reset()
     display.pitchHz.store (0.0f);
 }
 
-void ResonanceSuppressor::process (juce::AudioBuffer<float>& main, const float* detector)
+void ResonanceSuppressor::process (juce::AudioBuffer<float>& main, const float* detector, bool detectorIsMainSum)
 {
+    detectorIsMainMix = detectorIsMainSum;
     const int mask = fftSize - 1;
     const int channels = juce::jmin (numChannels, main.getNumChannels());
 
@@ -157,13 +163,79 @@ void ResonanceSuppressor::process (juce::AudioBuffer<float>& main, const float* 
 
 void ResonanceSuppressor::processFrame()
 {
+    forwardChannels();
     analyseDetector();
     computeCuts();
-
-    for (int ch = 0; ch < numChannels; ++ch)
-        applyToChannel (ch);
-
+    inverseChannels();
     publishDisplay();
+    ++frameCounter;
+}
+
+void ResonanceSuppressor::forwardChannels()
+{
+    // Two real channels per complex FFT: z = a + ib, then split by symmetry.
+    const int mask = fftSize - 1;
+
+    for (int a = 0; a < numChannels; a += 2)
+    {
+        const int b = a + 1 < numChannels ? a + 1 : -1;
+        const auto& inA = inFifo[(size_t) a];
+
+        for (int j = 0; j < fftSize; ++j)
+        {
+            const int idx = (fifoPos + j) & mask;
+            const float w = window[(size_t) j];
+            timeData[(size_t) j] = { inA[(size_t) idx] * w, b >= 0 ? inFifo[(size_t) b][(size_t) idx] * w : 0.0f };
+        }
+
+        fft->perform (timeData.data(), freqData.data(), false);
+
+        auto& specA = spectra[(size_t) a];
+        for (int k = 0; k < numBins; ++k)
+        {
+            const auto zk = freqData[(size_t) k];
+            const auto zn = std::conj (freqData[(size_t) ((fftSize - k) & mask)]);
+            specA[(size_t) k] = 0.5f * (zk + zn);
+            if (b >= 0)
+                spectra[(size_t) b][(size_t) k] = std::complex<float> (0.0f, -0.5f) * (zk - zn);
+        }
+    }
+}
+
+void ResonanceSuppressor::inverseChannels()
+{
+    const int mask = fftSize - 1;
+
+    for (int a = 0; a < numChannels; a += 2)
+    {
+        const int b = a + 1 < numChannels ? a + 1 : -1;
+        const auto& specA = spectra[(size_t) a];
+        const std::complex<float> i1 (0.0f, 1.0f);
+
+        for (int k = 0; k < numBins; ++k)
+        {
+            const float g = params.delta ? 1.0f - gains[(size_t) k] : gains[(size_t) k];
+            const auto xa = specA[(size_t) k] * g;
+            const auto xb = b >= 0 ? spectra[(size_t) b][(size_t) k] * g : std::complex<float>();
+
+            // Rebuild the full spectrum of a + ib from the two half spectra.
+            freqData[(size_t) k] = xa + i1 * xb;
+            if (k > 0 && k < fftSize / 2)
+                freqData[(size_t) (fftSize - k)] = std::conj (xa) + i1 * std::conj (xb);
+        }
+
+        fft->perform (freqData.data(), timeData.data(), true);
+
+        auto& outA = outFifo[(size_t) a];
+        for (int j = 0; j < fftSize; ++j)
+        {
+            const int idx = (fifoPos + j) & mask;
+            const float w = window[(size_t) j] * olaScale;
+            outA[(size_t) idx] += timeData[(size_t) j].real() * w;
+            if (b >= 0)
+                outFifo[(size_t) b][(size_t) idx] += timeData[(size_t) j].imag() * w;
+        }
+    }
 }
 
 void ResonanceSuppressor::analyseDetector()
@@ -173,33 +245,48 @@ void ResonanceSuppressor::analyseDetector()
     for (int j = 0; j < fftSize; ++j)
         detFrame[(size_t) j] = detFifo[(size_t) ((fifoPos + j) & mask)];
 
-    // Fundamental, for body protection and for spacing the envelope.
-    const auto pitch = pitchTracker.analyse (detFrame.data());
+    // Fundamental, for body protection and for spacing the envelope. A voice's
+    // pitch moves slowly enough that every other frame (~21 ms) is plenty.
     const float hopSeconds = (float) hopSize / (float) sampleRate;
-    const bool voiced = pitch.clarity > 0.7f && pitch.frequency >= 80.0f && pitch.frequency <= 500.0f;
+    if ((frameCounter & 1) == 0)
+        lastPitch = pitchTracker.analyse (detFrame.data());
+
+    const bool voiced = lastPitch.clarity > 0.7f && lastPitch.frequency >= 80.0f && lastPitch.frequency <= 500.0f;
 
     if (voiced)
-        protectedPitch = protectedPitch > 0.0f ? protectedPitch * std::sqrt (pitch.frequency / protectedPitch)
-                                               : pitch.frequency;
+        protectedPitch = protectedPitch > 0.0f ? protectedPitch * std::sqrt (lastPitch.frequency / protectedPitch)
+                                               : lastPitch.frequency;
 
     const float protectCoeff = std::exp (-hopSeconds / (voiced ? 0.01f : 0.15f));
     protectAmount = (voiced ? 1.0f : 0.0f) + (protectAmount - (voiced ? 1.0f : 0.0f)) * protectCoeff;
     if (protectAmount < 0.01f)
         protectedPitch = 0.0f;
 
+    // Detector spectrum. When it is the average of the processed channels the
+    // FFT is linear, so it is just the average of their spectra: no extra FFT.
+    if (detectorIsMainMix)
+    {
+        const float norm = 1.0f / (float) juce::jmax (1, numChannels);
+        for (int k = 0; k < numBins; ++k)
+        {
+            std::complex<float> sum;
+            for (int ch = 0; ch < numChannels; ++ch)
+                sum += spectra[(size_t) ch][(size_t) k];
+            detSpectrum[(size_t) k] = sum * norm;
+        }
+    }
+    else
+    {
+        for (int j = 0; j < fftSize; ++j)
+            timeData[(size_t) j] = { detFrame[(size_t) j] * window[(size_t) j], 0.0f };
+        fft->perform (timeData.data(), freqData.data(), false);
+        std::copy (freqData.begin(), freqData.begin() + numBins, detSpectrum.begin());
+    }
+
     // Level per bin, calibrated so a full-scale sine reads 0 dBFS.
-    std::fill (fftBuffer.begin(), fftBuffer.end(), 0.0f);
-    for (int j = 0; j < fftSize; ++j)
-        fftBuffer[(size_t) j] = detFrame[(size_t) j] * window[(size_t) j];
-
-    fft->performRealOnlyForwardTransform (fftBuffer.data(), true);
-
     const float calibration = 20.0f * std::log10 (juce::MathConstants<float>::pi / (float) fftSize);
     for (int k = 0; k < numBins; ++k)
-    {
-        const float re = fftBuffer[(size_t) (2 * k)], im = fftBuffer[(size_t) (2 * k + 1)];
-        levelDb[(size_t) k] = 10.0f * std::log10 (re * re + im * im + 1.0e-20f) + calibration;
-    }
+        levelDb[(size_t) k] = 10.0f * std::log10 (std::norm (detSpectrum[(size_t) k]) + 1.0e-20f) + calibration;
 }
 
 void ResonanceSuppressor::computeCuts()
@@ -311,31 +398,6 @@ void ResonanceSuppressor::computeCuts()
         cutFinal[(size_t) k] = cut;
         gains[(size_t) k] = juce::Decibels::decibelsToGain (-cut, -200.0f);
     }
-}
-
-void ResonanceSuppressor::applyToChannel (int ch)
-{
-    const int mask = fftSize - 1;
-    const auto& in = inFifo[(size_t) ch];
-    auto& out = outFifo[(size_t) ch];
-
-    std::fill (fftBuffer.begin(), fftBuffer.end(), 0.0f);
-    for (int j = 0; j < fftSize; ++j)
-        fftBuffer[(size_t) j] = in[(size_t) ((fifoPos + j) & mask)] * window[(size_t) j];
-
-    fft->performRealOnlyForwardTransform (fftBuffer.data(), true);
-
-    for (int k = 0; k < numBins; ++k)
-    {
-        const float g = params.delta ? 1.0f - gains[(size_t) k] : gains[(size_t) k];
-        fftBuffer[(size_t) (2 * k)] *= g;
-        fftBuffer[(size_t) (2 * k + 1)] *= g;
-    }
-
-    fft->performRealOnlyInverseTransform (fftBuffer.data());
-
-    for (int j = 0; j < fftSize; ++j)
-        out[(size_t) ((fifoPos + j) & mask)] += fftBuffer[(size_t) j] * window[(size_t) j] * olaScale;
 }
 
 void ResonanceSuppressor::publishDisplay()
