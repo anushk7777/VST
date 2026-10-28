@@ -54,11 +54,35 @@ inline float maxAbsDifference (const juce::AudioBuffer<float>& a, const juce::Au
     return worst;
 }
 
-/** A sung phrase: notes of a bright vowel (harmonics of 196-294 Hz with
-    formants and a nasal 3.2 kHz ring), vibrato, swells, breath between notes.
-    Peaks around -6 dBFS, RMS around -18 dBFS: a typical tracked vocal. */
+/** A sung phrase with a realistic tonal balance: notes of a vowel on
+    196-294 Hz with vibrato and swells, formants near 700 Hz and 1.2 kHz, a
+    singer's ring near 3.2 kHz, harmonics out to 18 kHz falling the way a
+    real voice's long-term spectrum does, and breath between notes. Peaks
+    around -6 dBFS, RMS around -20 dBFS: a typical tracked vocal. */
 inline juce::AudioBuffer<float> sungPhrase (int samples, double sampleRate = 48000.0, int channels = 2)
 {
+    // Long-term spectrum of a voice, relative to its mids (dB), by frequency.
+    const auto spectrumDb = [] (double hz)
+    {
+        static constexpr std::array<std::pair<double, double>, 9> anchors {{
+            { 100.0, -6.0 }, { 200.0, -2.0 }, { 300.0, 0.0 }, { 1000.0, 0.0 }, { 2000.0, -5.0 },
+            { 4000.0, -11.0 }, { 8000.0, -17.0 }, { 12000.0, -22.0 }, { 18000.0, -30.0 } }};
+        if (hz <= anchors.front().first) return anchors.front().second;
+        for (size_t i = 1; i < anchors.size(); ++i)
+            if (hz <= anchors[i].first)
+            {
+                const double t = std::log (hz / anchors[i - 1].first) / std::log (anchors[i].first / anchors[i - 1].first);
+                return anchors[i - 1].second + (anchors[i].second - anchors[i - 1].second) * t;
+            }
+        return anchors.back().second;
+    };
+
+    const auto bump = [] (double hz, double centre, double db, double octaves)
+    {
+        const double d = std::log2 (hz / centre) / octaves;
+        return db * std::exp (-0.5 * d * d);
+    };
+
     juce::AudioBuffer<float> buffer (channels, samples);
     buffer.clear();
     juce::Random rng (21);
@@ -76,18 +100,18 @@ inline juce::AudioBuffer<float> sungPhrase (int samples, double sampleRate = 480
         phase += juce::MathConstants<double>::twoPi * f0 / sampleRate;
 
         double v = 0.0;
-        for (int n = 1; n * f0 < 14000.0; ++n)
+        for (int n = 1; n * f0 < 18000.0; ++n)
         {
             const double hz = n * f0;
-            const double formant = 1.0 / (1.0 + std::pow ((hz - 700.0) / 500.0, 2.0))
-                                 + 0.5 / (1.0 + std::pow ((hz - 1200.0) / 400.0, 2.0))
-                                 + 0.9 / (1.0 + std::pow ((hz - 3200.0) / 180.0, 2.0))
-                                 + 0.15;
-            v += (n == 1 ? 0.5 : 0.3 / n) * formant * std::sin (phase * n);
+            // Per-harmonic level: the long-term spectrum, less the extra harmonics
+            // each third-octave band holds at higher frequencies.
+            const double db = spectrumDb (hz) - 10.0 * std::log10 (std::max (1.0, 0.23 * hz / f0))
+                            + bump (hz, 700.0, 4.0, 0.5) + bump (hz, 1200.0, 2.0, 0.4) + bump (hz, 3200.0, 3.0, 0.3);
+            v += std::pow (10.0, db / 20.0) * std::sin (phase * n);
         }
 
         const double breath = (inNote >= 0.42 ? 0.01 : 0.003) * (rng.nextFloat() - 0.5);
-        const float sample = (float) (0.42 * envelope * v + breath);
+        const float sample = (float) (0.07 * envelope * v + breath);
         for (int ch = 0; ch < channels; ++ch)
             buffer.setSample (ch, i, sample);
     }

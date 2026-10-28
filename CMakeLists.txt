@@ -39,6 +39,7 @@ juce_add_module("${melatonin_blur_SOURCE_DIR}")
 # tool compile exactly the same engine the plugin runs.
 set(LINEN_DSP_SOURCES
     src/dsp/Air.cpp
+    src/dsp/AutoAssist.cpp
     src/dsp/Eq1073.cpp
     src/dsp/LinenEngine.cpp
     src/dsp/PainEngine.cpp
@@ -83,6 +84,7 @@ juce_add_plugin(Linen
 
 set(LINEN_PLUGIN_SOURCES
     ${LINEN_DSP_SOURCES}
+    src/ListenSession.cpp
     src/PluginProcessor.cpp
     src/PluginEditor.cpp
     src/ui/LinenLookAndFeel.cpp
@@ -117,7 +119,8 @@ target_sources(LinenTests PRIVATE
     tests/PreampEqTests.cpp
     tests/CompAirTests.cpp
     tests/SilkTests.cpp
-    tests/PainTests.cpp)
+    tests/PainTests.cpp
+    tests/AssistTests.cpp)
 target_include_directories(LinenTests PRIVATE src tests)
 target_compile_definitions(LinenTests PRIVATE ${LINEN_COMMON_DEFINITIONS})
 target_link_libraries(LinenTests

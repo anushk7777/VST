@@ -67,8 +67,32 @@ void LinenAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::
     if (getBusCount (true) > 1 && getBus (true, 1)->isEnabled() && getChannelCountOfBus (true, 1) > 0)
         sidechain.emplace (getBusBuffer (buffer, true, 1));
 
+    listen.push (main, getMainBusNumInputChannels());
+
     engine.setParams (handles.read());
     engine.process (main, sidechain ? &*sidechain : nullptr);
+}
+
+void LinenAudioProcessor::applyAssist (const linen::AssistResult& r)
+{
+    namespace id = linen::params::id;
+
+    const std::pair<const char*, float> values[] {
+        { id::inputGain, r.inputGainDb },     { id::preampDrive, r.preampDrive },
+        { id::eqHighPass, (float) r.highPass }, { id::eqLowFreq, (float) r.lowFreq }, { id::eqLowGain, r.lowGainDb },
+        { id::eqMidFreq, (float) r.midFreq },  { id::eqMidGain, r.midGainDb },      { id::eqHighGain, r.highGainDb },
+        { id::deharshDepth, r.deharshDepth },  { id::deharshDetail, r.deharshDetail },
+        { id::compThreshold, r.compThresholdDb }, { id::compRatio, r.compRatio }, { id::compCotton, r.compCotton },
+        { id::airAmount, r.airAmount },        { id::airDeEss, r.airDeEss },
+    };
+
+    for (const auto& [paramId, value] : values)
+        if (auto* p = state.getParameter (paramId))
+        {
+            p->beginChangeGesture();
+            p->setValueNotifyingHost (p->convertTo0to1 (value));
+            p->endChangeGesture();
+        }
 }
 
 int LinenAudioProcessor::getNumPrograms()

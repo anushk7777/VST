@@ -46,7 +46,7 @@ float SilkMacro::levelTrimDb (float silk)
     // more compression loses a little level that auto gain doesn't fully
     // restore, and pulling everything back loses a touch of preamp density.
     const float m = (juce::jlimit (0.0f, 1.0f, silk) - 0.5f) * 2.0f;
-    return m > 0.0f ? 1.0f * m * m : 0.2f * m * m;
+    return m > 0.0f ? 1.72f * m * std::sqrt (m) : -0.9f * std::pow (-m, 0.8f);
 }
 
 } // namespace linen

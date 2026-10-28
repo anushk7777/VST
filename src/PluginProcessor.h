@@ -2,6 +2,7 @@
 
 #include <juce_audio_processors/juce_audio_processors.h>
 
+#include "ListenSession.h"
 #include "Parameters.h"
 #include "dsp/LinenEngine.h"
 
@@ -48,10 +49,17 @@ public:
     float getSibilance() const noexcept { return engine.getSibilance(); }
     float getPainStress() const noexcept { return engine.getPainStress(); }
 
+    /** The Listen button: hear a few seconds of the vocal, then set Linen up for it. */
+    ListenSession& getListenSession() noexcept { return listen; }
+    void startListening() { listen.start (getSampleRate()); }
+
 private:
+    void applyAssist (const linen::AssistResult&);
+
     linen::params::Handles handles;
     int currentProgram = 0;
     linen::Engine engine;
+    ListenSession listen { [this] (const linen::AssistResult& r) { applyAssist (r); } };
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (LinenAudioProcessor)
 };

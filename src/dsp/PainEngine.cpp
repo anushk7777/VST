@@ -30,8 +30,8 @@ namespace
 float PainEngine::compensationDb (float pain01)
 {
     // Measured on a sung phrase at the house settings (tests/PainTests.cpp):
-    // the throat-ache lift adds about 0.2 dB at full Pain.
-    return -0.2f * juce::jlimit (0.0f, 1.0f, pain01);
+    // throat-ache lift and extra preamp density add up to about 1 dB.
+    return -1.07f * std::pow (juce::jlimit (0.0f, 1.0f, pain01), 0.8f);
 }
 
 void PainEngine::prepare (double newSampleRate, int maxBlockSize, int newNumChannels)
