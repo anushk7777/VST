@@ -102,8 +102,31 @@ void SpectrumDisplay::tick (double timestampSeconds)
     const float targetAlpha = pitch > 0.0f ? 1.0f : 0.0f;
     pitchAlpha += (targetAlpha - pitchAlpha) * fall;
 
-    if (moving || pitchAlpha > 0.01f)
+    // Context: Pain, stress, Listen. The backlight follows the signal.
+    nowSeconds = timestampSeconds;
+    const auto previous = context;
+    if (contextSource != nullptr)
+        context = contextSource();
+
+    const float loudest = *std::max_element (level.begin(), level.end());
+    const float targetBacklight = juce::jlimit (0.0f, 1.0f, (loudest + 70.0f) / 50.0f);
+    backlight += (targetBacklight - backlight) * fall;
+    listenGlow += ((context.listening >= 0.0f ? 1.0f : 0.0f) - listenGlow) * (1.0f - std::exp (-dt / 0.2f));
+
+    const bool contextMoving = std::abs (context.stress - previous.stress) > 0.002f || std::abs (context.pain - previous.pain) > 0.002f
+                            || context.stress > 0.02f || context.listening >= 0.0f || listenGlow > 0.01f;
+    const bool showingMessage = nowSeconds - messageSince < 12.0;
+
+    if (moving || pitchAlpha > 0.01f || contextMoving || showingMessage)
         repaint();
+}
+
+void SpectrumDisplay::showMessage (const juce::String& text, bool good)
+{
+    message = text;
+    messageGood = good;
+    messageSince = nowSeconds;
+    repaint();
 }
 
 void SpectrumDisplay::paint (juce::Graphics& g)
@@ -115,17 +138,27 @@ void SpectrumDisplay::paint (juce::Graphics& g)
     wellPath.addRoundedRectangle (bounds, 14.0f);
     g.setColour (well);
     g.fillPath (wellPath);
-    wellShadow.render (g, wellPath);
 
-    // Glass: a soft reflection across the top of the well.
     {
         juce::Graphics::ScopedSaveState save (g);
         g.reduceClipRegion (wellPath);
-        const auto glass = bounds.withHeight (bounds.getHeight() * 0.32f);
-        g.setGradientFill (juce::ColourGradient (juce::Colours::white.withAlpha (0.55f), 0.0f, glass.getY(),
+
+        // Backlight: a warm glow from below, like a lit VU window, brightening
+        // with the signal; it turns cobalt while Listen is listening.
+        const auto warm = ivory.interpolatedWith (champagneLight, 0.35f);
+        const auto light = warm.interpolatedWith (cobaltLight, 0.55f * listenGlow);
+        juce::ColourGradient glow (light.withAlpha (0.55f + 0.35f * backlight), bounds.getCentreX(), bounds.getBottom() + bounds.getHeight() * 0.15f,
+                                   light.withAlpha (0.0f), bounds.getCentreX(), bounds.getY() - bounds.getHeight() * 0.2f, true);
+        g.setGradientFill (glow);
+        g.fillRect (bounds);
+
+        // Glass: a soft reflection across the top of the well.
+        const auto glass = bounds.withHeight (bounds.getHeight() * 0.3f);
+        g.setGradientFill (juce::ColourGradient (juce::Colours::white.withAlpha (0.35f), 0.0f, glass.getY(),
                                                  juce::Colours::white.withAlpha (0.0f), 0.0f, glass.getBottom(), false));
         g.fillRect (glass);
     }
+    wellShadow.render (g, wellPath);
 
     // Frequency grid.
     g.setFont (fonts::sans (9.0f, 0.12f));
@@ -142,15 +175,24 @@ void SpectrumDisplay::paint (juce::Graphics& g)
     juce::Graphics::ScopedSaveState clip (g);
     g.reduceClipRegion (plot.toNearestInt().expanded (0, 2));
 
+    // Under Pain stress, the 1.5-4.5 kHz points tremble.
+    const auto jitter = [this] (float hz)
+    {
+        if (context.stress < 0.02f || hz < 1500.0f || hz > 4500.0f)
+            return 0.0f;
+        return (tremor.nextFloat() * 2.0f - 1.0f) * 3.5f * context.stress;
+    };
+
     // Spectrum: a soft ink line over a faint wash.
     std::vector<juce::Point<float>> spectrumPts, veilPts;
     spectrumPts.reserve (DeharshDisplay::numPoints);
     veilPts.reserve (DeharshDisplay::numPoints);
     for (int p = 0; p < DeharshDisplay::numPoints; ++p)
     {
-        const float x = xForHz (DeharshDisplay::frequencyOf (p));
-        spectrumPts.push_back ({ x, yForLevel (level[(size_t) p]) });
-        veilPts.push_back ({ x, yForCut (cut[(size_t) p]) });
+        const float hz = DeharshDisplay::frequencyOf (p);
+        const float x = xForHz (hz);
+        spectrumPts.push_back ({ x, yForLevel (level[(size_t) p]) + jitter (hz) });
+        veilPts.push_back ({ x, yForCut (cut[(size_t) p]) + 0.6f * jitter (hz) });
     }
 
     auto spectrum = splineThrough (spectrumPts);
@@ -160,20 +202,22 @@ void SpectrumDisplay::paint (juce::Graphics& g)
     wash.closeSubPath();
     g.setGradientFill (juce::ColourGradient (ink (0.10f), 0.0f, plot.getY(), ink (0.03f), 0.0f, plot.getBottom(), false));
     g.fillPath (wash);
-    g.setColour (ink (0.34f));
+    g.setColour (ink (0.36f));
     g.strokePath (spectrum, juce::PathStrokeType (1.2f, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
 
-    // The silk veil: gain reduction hanging from the top edge.
+    // The silk veil: gain reduction hanging from the top edge, champagne to
+    // terracotta, deepening toward crimson as Pain rises.
     auto veilEdge = splineThrough (veilPts);
     juce::Path veil (veilEdge);
     veil.lineTo (plot.getRight(), plot.getY() - 2.0f);
     veil.lineTo (plot.getX(), plot.getY() - 2.0f);
     veil.closeSubPath();
 
+    const float painTint = juce::jlimit (0.0f, 1.0f, context.pain);
+    const auto deep = terracotta.interpolatedWith (crimsonDeep, painTint);
     const float fullDepth = yForCut (maxVeilDb);
-    juce::ColourGradient silk (cobaltLight.withAlpha (0.28f), 0.0f, plot.getY(),
-                               cobaltDeep.withAlpha (0.72f), 0.0f, fullDepth, false);
-    silk.addColour (0.35, cobalt.withAlpha (0.5f));
+    juce::ColourGradient silk (champagneLight.withAlpha (0.35f), 0.0f, plot.getY(), deep.withAlpha (0.66f), 0.0f, fullDepth, false);
+    silk.addColour (0.3, champagne.interpolatedWith (crimson, painTint * 0.5f).withAlpha (0.5f));
     g.setGradientFill (silk);
     g.fillPath (veil);
 
@@ -181,43 +225,72 @@ void SpectrumDisplay::paint (juce::Graphics& g)
     // fading away when nothing is being cut.
     const float deepest = *std::max_element (cut.begin(), cut.end());
     const float hemAlpha = juce::jlimit (0.0f, 1.0f, deepest / 2.0f);
-    g.setColour (navy.withAlpha (0.10f * hemAlpha));
+    g.setColour (espresso.withAlpha (0.10f * hemAlpha));
     g.strokePath (veilEdge, juce::PathStrokeType (2.0f, juce::PathStrokeType::curved), juce::AffineTransform::translation (0.0f, 1.6f));
-    g.setColour (cobalt.withAlpha (0.25f + 0.7f * hemAlpha));
+    g.setColour (deep.withAlpha (0.25f + 0.6f * hemAlpha));
     g.strokePath (veilEdge, juce::PathStrokeType (1.4f, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
 
-    // Areas outside the focus range are veiled in white.
+    // Areas outside the focus range are veiled in linen.
     const float xLow = xForHz (focusLowHz), xHigh = xForHz (focusHighHz);
     g.setColour (surface.withAlpha (0.45f));
     g.fillRect (juce::Rectangle<float>::leftTopRightBottom (plot.getX() - 2.0f, plot.getY() - 2.0f, xLow, plot.getBottom() + 2.0f));
     g.fillRect (juce::Rectangle<float>::leftTopRightBottom (xHigh, plot.getY() - 2.0f, plot.getRight() + 2.0f, plot.getBottom() + 2.0f));
 
-    // The protected fundamental: a small cobalt mark at the floor.
+    // The protected fundamental: a small champagne mark at the floor.
     if (pitchAlpha > 0.01f && pitchHz > 0.0f)
     {
         const float x = xForHz (pitchHz);
         juce::Path diamond;
         diamond.addTriangle (x - 4.0f, plot.getBottom() - 6.0f, x + 4.0f, plot.getBottom() - 6.0f, x, plot.getBottom() - 12.0f);
         diamond.addTriangle (x - 4.0f, plot.getBottom() - 6.0f, x + 4.0f, plot.getBottom() - 6.0f, x, plot.getBottom());
-        g.setColour (cobaltDeep.withAlpha (0.85f * pitchAlpha));
+        g.setColour (champagneDeep.withAlpha (0.85f * pitchAlpha));
         g.fillPath (diamond);
         g.setColour (ink (0.55f * pitchAlpha));
         g.setFont (fonts::serifItalic (13.0f));
         g.drawText ("body", juce::Rectangle<float> (x + 7.0f, plot.getBottom() - 16.0f, 40.0f, 14.0f), juce::Justification::centredLeft);
     }
 
-    // Focus handles.
+    // Focus handles: champagne, lit cobalt while touched.
     for (const auto& [handle, x] : { std::pair { Handle::low, xLow }, std::pair { Handle::high, xHigh } })
     {
         const bool active = hovered == handle || dragging == handle;
-        g.setColour (cobalt.withAlpha (active ? 0.9f : 0.5f));
+        g.setColour (active ? cobalt.withAlpha (0.85f) : champagneDeep.withAlpha (0.55f));
         g.fillRect (juce::Rectangle<float> (x - 0.5f, plot.getY(), 1.0f, plot.getHeight()));
 
         const auto knob = juce::Rectangle<float> (active ? 11.0f : 9.0f, active ? 11.0f : 9.0f).withCentre ({ x, plot.getY() + 8.0f });
-        g.setGradientFill (juce::ColourGradient (juce::Colours::white, knob.getX(), knob.getY(), porcelainShade, knob.getRight(), knob.getBottom(), false));
+        g.setGradientFill (juce::ColourGradient (champagneLight, knob.getX(), knob.getY(), champagne, knob.getRight(), knob.getBottom(), false));
         g.fillEllipse (knob);
-        g.setColour (cobalt);
-        g.drawEllipse (knob, 1.4f);
+        g.setColour (active ? cobalt : champagneDeep);
+        g.drawEllipse (knob, active ? 1.4f : 0.8f);
+    }
+
+    // Listening: a calm caption with the progress.
+    if (listenGlow > 0.01f)
+    {
+        const auto box = plot.withSizeKeepingCentre (300.0f, 30.0f);
+        g.setColour (ivory.withAlpha (0.85f * listenGlow));
+        g.fillRoundedRectangle (box, 15.0f);
+        g.setColour (cobalt.withAlpha (0.6f * listenGlow));
+        g.drawRoundedRectangle (box, 15.0f, 1.0f);
+        g.setColour (cobaltDeep.withAlpha (listenGlow));
+        g.setFont (fonts::serifItalic (17.0f));
+        const int percent = juce::roundToInt (juce::jmax (0.0f, context.listening) * 100.0f);
+        g.drawText ("listening to your voice  " + juce::String (percent) + "%", box, juce::Justification::centred);
+    }
+
+    // What Listen did, fading out after a while.
+    const double age = nowSeconds - messageSince;
+    if (message.isNotEmpty() && age < 12.0)
+    {
+        const float alpha = (float) juce::jlimit (0.0, 1.0, juce::jmin (age / 0.3, (12.0 - age) / 1.5));
+        const auto box = plot.withTrimmedTop (plot.getHeight() - 46.0f).reduced (40.0f, 4.0f);
+        g.setColour (ivory.withAlpha (0.9f * alpha));
+        g.fillRoundedRectangle (box, 12.0f);
+        g.setColour ((messageGood ? cobalt : champagneDeep).withAlpha (0.5f * alpha));
+        g.drawRoundedRectangle (box, 12.0f, 1.0f);
+        g.setColour (espresso.withAlpha (alpha));
+        g.setFont (fonts::serifItalic (15.0f));
+        g.drawFittedText (message, box.reduced (14.0f, 2.0f).toNearestInt(), juce::Justification::centred, 2);
     }
 }
 

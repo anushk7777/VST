@@ -39,11 +39,21 @@ private:
     juce::SharedResourcePointer<Typefaces> typefaces;
 };
 
-/** A cobalt-metal rotary knob with its own caption and value readout.
-    Owns its shadows, since melatonin caches them per object. */
+/** A champagne-metal rotary knob with its own caption and value readout.
+    Its arc lights cobalt while you touch it. Owns its shadows, since
+    melatonin caches them per object. */
 class LinenKnob final : public juce::Slider
 {
 public:
+    /** A live light around the knob: halo strength (0..1), its colour, and how
+        far the champagne body is tinted toward that colour (0..1). */
+    struct Glow
+    {
+        float halo = 0.0f;
+        juce::Colour colour;
+        float tint = 0.0f;
+    };
+
     LinenKnob (juce::String caption, float knobDiameter);
 
     void paint (juce::Graphics&) override;
@@ -55,8 +65,8 @@ public:
     /** Bipolar knobs (gains) draw their value arc out from the centre. */
     void setBipolar (bool shouldBeBipolar) { bipolar = shouldBeBipolar; repaint(); }
 
-    /** Featured knobs (the main control of a section) get a cobalt enamel body. */
-    void setFeatured (bool shouldBeFeatured) { featured = shouldBeFeatured; repaint(); }
+    /** Gives the knob a live halo, animated on VBlank (Silk, Pain). */
+    void setGlow (std::function<Glow()> source);
 
 private:
     juce::Rectangle<float> knobArea() const;
@@ -65,18 +75,22 @@ private:
     float diameter;
     bool hovering = false;
     bool bipolar = false;
-    bool featured = false;
+
+    std::function<Glow()> glowSource;
+    Glow glow;
+    std::unique_ptr<juce::VBlankAttachment> glowTicker;
 
     melatonin::DropShadow bodyShadow {
-        { linen::palette::navy.withAlpha (0.16f), 14, { 0, 7 } },
-        { linen::palette::navy.withAlpha (0.10f), 3, { 0, 1 } }
+        { linen::palette::espresso.withAlpha (0.20f), 14, { 0, 7 } },
+        { linen::palette::espresso.withAlpha (0.12f), 3, { 0, 1 } }
     };
     melatonin::InnerShadow wellShadow {
-        { linen::palette::navy.withAlpha (0.10f), 6, { 0, 2 } }
+        { linen::palette::espresso.withAlpha (0.14f), 6, { 0, 2 } }
     };
 };
 
-/** A small capsule toggle: hairline outline when off, cobalt when on. */
+/** A small capsule toggle: hairline outline when off; champagne with a lit
+    cobalt LED when on. */
 class LinenPill final : public juce::ToggleButton
 {
 public:

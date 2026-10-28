@@ -28,6 +28,17 @@ public:
     void mouseUp (const juce::MouseEvent&) override;
     void mouseDoubleClick (const juce::MouseEvent&) override;
 
+    /** Live context, polled every frame: Pain amount and stress (0..1 each),
+        and Listen progress (0..1, or negative when not listening). */
+    struct Context
+    {
+        float pain = 0.0f, stress = 0.0f, listening = -1.0f;
+    };
+    void setContextSource (std::function<Context()> newSource) { contextSource = std::move (newSource); }
+
+    /** Shows a short message (e.g. what Listen did) across the display for a while. */
+    void showMessage (const juce::String& text, bool good);
+
 private:
     enum class Handle { none, low, high };
 
@@ -45,6 +56,13 @@ private:
     float focusLowHz = 120.0f, focusHighHz = 18000.0f;
 
     std::array<float, DeharshDisplay::numPoints> level {}, cut {};
+    std::function<Context()> contextSource;
+    Context context;
+    float backlight = 0.0f, listenGlow = 0.0f;
+    juce::Random tremor;
+    juce::String message;
+    bool messageGood = true;
+    double messageSince = -100.0, nowSeconds = 0.0;
     float pitchHz = 0.0f, pitchAlpha = 0.0f;
     double lastTick = 0.0;
 
@@ -52,7 +70,7 @@ private:
     Handle hovered = Handle::none, dragging = Handle::none;
 
     melatonin::InnerShadow wellShadow {
-        { linen::palette::navy.withAlpha (0.10f), 12, { 0, 4 } },
+        { linen::palette::espresso.withAlpha (0.16f), 12, { 0, 4 } },
         { juce::Colours::white.withAlpha (0.55f), 2, { 0, -1 } }
     };
 

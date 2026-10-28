@@ -60,6 +60,9 @@ public:
     float getSibilance() const noexcept { return air.getSibilance(); }
     float getPainStress() const noexcept { return painEngine.getStressLevel(); }
 
+    /** RMS of the incoming signal over the last block (linear), for the lamps. */
+    float getInputLevel() const noexcept { return inputLevel.load (std::memory_order_relaxed); }
+
     /** Adds a pure delay to the wet path. Only for tests: it stands in for
         a latent module so the dry-path compensation can be checked. */
     void setExtraWetLatencyForTesting (int samples);
@@ -92,6 +95,7 @@ private:
     int testWetLatency = 0;
 
     int latencySamples = 0;
+    std::atomic<float> inputLevel { 0.0f };
 };
 
 } // namespace linen

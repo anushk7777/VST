@@ -121,6 +121,9 @@ void Engine::processChunk (juce::AudioBuffer<float>& buffer, const juce::AudioBu
     const int numSamples = buffer.getNumSamples();
     const int channels = juce::jmin (buffer.getNumChannels(), numChans);
 
+    if (channels > 0)
+        inputLevel.store (buffer.getRMSLevel (0, 0, numSamples), std::memory_order_relaxed);
+
     // Dry path: untouched input, delayed to line up with the wet path.
     for (int ch = 0; ch < channels; ++ch)
     {

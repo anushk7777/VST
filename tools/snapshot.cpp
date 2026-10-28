@@ -2,7 +2,7 @@
 // given) vocal plays through the real processor, so the GUI can be checked
 // without a DAW. Needs a display (use Xvfb on a headless Linux box).
 //
-//   LinenSnapshot <out.png> [in.wav] [--scale 2] [--param id=value ...]
+//   LinenSnapshot <out.png> [in.wav] [--scale 2] [--seconds 3] [--listen] [--param id=value ...]
 
 #include <juce_audio_formats/juce_audio_formats.h>
 
@@ -73,6 +73,10 @@ public:
         {
             if (args[i] == "--scale" && i + 1 < args.size())
                 scale = args[++i].getFloatValue();
+            else if (args[i] == "--seconds" && i + 1 < args.size())
+                seconds = args[++i].getDoubleValue();
+            else if (args[i] == "--listen")
+                listen = true;
             else if (args[i] == "--param" && i + 1 < args.size())
             {
                 const auto setting = args[++i];
@@ -92,13 +96,13 @@ public:
             std::unique_ptr<juce::AudioFormatReader> reader (formats.createReaderFor (inFile));
             if (reader != nullptr)
             {
-                audio.setSize (2, (int) std::min (reader->lengthInSamples, (juce::int64) (sampleRate * 3)));
+                audio.setSize (2, (int) std::min (reader->lengthInSamples, (juce::int64) (sampleRate * seconds)));
                 reader->read (&audio, 0, audio.getNumSamples(), 0, true, true);
             }
         }
 
         if (audio.getNumSamples() == 0)
-            audio = syntheticVocal (sampleRate, (int) sampleRate * 3);
+            audio = syntheticVocal (sampleRate, (int) (sampleRate * seconds));
 
         processor.setPlayConfigDetails (2, 2, sampleRate, blockSize);
         processor.prepareToPlay (sampleRate, blockSize);
@@ -108,6 +112,9 @@ public:
         window->setContentOwned (processor.createEditor(), true);
         window->setTopLeftPosition (40, 40);
         window->setVisible (true);
+
+        if (listen)
+            processor.startListening();
 
         startTimer ((int) (1000.0 * blockSize / sampleRate));
     }
@@ -154,6 +161,8 @@ private:
     std::unique_ptr<juce::DocumentWindow> window;
     juce::File outFile;
     float scale = 2.0f;
+    double seconds = 3.0;
+    bool listen = false;
     int position = 0;
 };
 

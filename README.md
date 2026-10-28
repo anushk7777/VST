@@ -21,8 +21,10 @@ The full plan and the status of each phase are in [docs/PLAN.md](docs/PLAN.md).
 | 2 | De-harsh (resonance suppressor) and its spectrum display | done |
 | 3 | 1073-style preamp and EQ | done |
 | 4 | Silk compressor (with Cotton) and Air | done |
-| 5 | Silk macro and presets | done (GUI polish continues) |
-| 6 | Auto-assist "Listen" button | next |
+| 5 | Silk macro and presets | done |
+| 5b | Pain (vocal distress engine) | done |
+| 6 | AI Listen button | done |
+| 6b | Premium UI: linen + cobalt lights, jewel lamps, halos, backlit display | done |
 | 7 | Neural preamp (needs real 1073 recordings) | planned |
 
 ## Install in FL Studio (Windows 11)
@@ -34,6 +36,42 @@ The full plan and the status of each phase are in [docs/PLAN.md](docs/PLAN.md).
 5. In a Mixer insert, open an empty slot and pick **Linen**.
 
 **Linen-Standalone-Windows** is the same thing as a standalone app, for a quick look without FL Studio.
+
+## AI Listen
+
+Press **AI LISTEN** (under the preset box), then play your vocal. The lamp ring pulses cobalt and fills as it listens. After about 6 seconds of actual singing, it compares the vocal with the balance of a smooth, finished pop vocal and sets Linen up for it:
+- input gain;
+- high-pass;
+- low, mid and 12k EQ;
+- De-harsh depth;
+- compressor threshold, ratio and Cotton;
+- Air and De-ess.
+
+The display then tells you in plain words what it heard and what it changed. Silk and Pain stay where you put them. Everything runs locally; click the button again to stop.
+
+## Pain
+
+**Pain** (top right, beside Silk) is Silk's opposite: raw ache that only bites when the singer pushes.
+- A "nervous system" watches the 1.8–4.2 kHz strain band, with a fast reflex for belts and a slow fatigue for long loud lines.
+- Under stress the virtual plate starves: the rail sags and the bias shifts, so pushed notes crack with harmonics while quiet lines stay fragile.
+- Quiet fry and throat tension between words get pulled up.
+- A faint tremor trembles in only when the voice strains.
+- Pain also pushes the preamp a little and makes De-harsh stricter above 5.5 kHz, while leaving the 1.5–3.2 kHz ache band alone. Past 50% it darkens Air like old tape.
+- The level stays steady. At 0 it is completely bypassed.
+
+The knob burns crimson and the silk veil trembles as stress rises. The presets **Velvet Ache** and **Torn Linen** show it off.
+
+## Lights
+
+- A **jewel lamp** beside each section title glows cobalt as that module works:
+  - Preamp: drive;
+  - De-harsh: cuts;
+  - Silk comp: gain reduction;
+  - Air: air, flaring on every S;
+  - Output: signal.
+- Switches carry a small cobalt LED when on.
+- Silk's halo breathes with the vocal.
+- The display is backlit, and turns cobalt while AI Listen is listening.
 
 ## Silk and presets
 
@@ -55,6 +93,8 @@ The full plan and the status of each phase are in [docs/PLAN.md](docs/PLAN.md).
 | Warm & Close | More preamp and Cotton: round, thick, cushioned. |
 | Transparent Polish | Barely there: de-harshed, lightly held, a touch of air. |
 | De-harsh Only | Just the resonance suppressor. |
+| Velvet Ache | Warm, intimate R&B/pop with emotional bite (Silk 65%, Pain 35%). |
+| Torn Linen | Raw, overdriven, heart-on-sleeve chorus vocal (Silk 40%, Pain 80%). |
 
 ## Using the Preamp and EQ
 
@@ -110,10 +150,10 @@ De-harsh listens for frequencies that suddenly poke out above the rest of the vo
 | **Glare** | Leans the detection toward 2.5–5.5 kHz, where harshness hurts most. |
 | **Body** | Tracks the sung note and never cuts its fundamental, so the vocal stays full. |
 | **Delta** | Plays only what is being removed. Use it to check that nothing musical is being taken. |
-| **Sidechain** | Detect from the sidechain input instead (e.g. duck a beat's harsh bits where the vocal sits). |
+| **Key** | Detect from the sidechain input instead (e.g. duck a beat's harsh bits where the vocal sits). |
 | **Focus handles** | Drag the two gold handles on the display to limit where De-harsh works. Double-click resets. |
 
-Linen adds about 2110 samples of latency at 44.1/48 kHz (about 44 ms). FL Studio compensates for it automatically.
+Linen adds about 2290 samples of latency at 44.1/48 kHz (about 48 ms). FL Studio compensates for it automatically.
 
 ## Build it yourself
 
@@ -138,7 +178,7 @@ build/LinenRender_artefacts/Release/LinenRender in.wav out.wav --depth 6 --detai
 | `src/dsp/` | The signal chain (`LinenEngine`). No plugin or GUI code, so tests and the render tool run the same engine. |
 | `src/Parameters.h` | Every parameter, in one place. Parameter IDs are permanent. |
 | `src/PluginProcessor.*`, `src/PluginEditor.*` | The JUCE plugin wrapper and window. |
-| `src/ui/` | Look and feel: white and electric-cobalt palette (`Palette.h`), glossy backdrop, porcelain and cobalt-enamel knobs. |
+| `src/ui/` | Look and feel: linen, champagne and espresso, with cobalt light (`Palette.h`); linen backdrop, cards, jewel lamps (`Lights.*`), display. |
 | `tests/` | DSP unit tests. |
 | `tools/render.cpp` | Offline render CLI. |
 | `tools/snapshot.cpp` | Dev tool: renders the window to PNG while a test vocal plays (`-DLINEN_BUILD_SNAPSHOT=ON`). |

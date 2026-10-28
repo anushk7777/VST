@@ -3,8 +3,9 @@
 #include <juce_audio_processors/juce_audio_processors.h>
 
 #include "PluginProcessor.h"
-#include "ui/LinenLookAndFeel.h"
 #include "ui/Backdrop.h"
+#include "ui/Lights.h"
+#include "ui/LinenLookAndFeel.h"
 #include "ui/Meters.h"
 #include "ui/SpectrumDisplay.h"
 
@@ -49,24 +50,38 @@ private:
             bool hovering = false;
         };
 
+        /** A softly raised linen card behind one section. */
+        struct Card
+        {
+            juce::String title, descriptor;
+            juce::Rectangle<int> bounds;
+            melatonin::DropShadow shadow { { linen::palette::espresso.withAlpha (0.09f), 18, { 0, 6 } },
+                                           { linen::palette::espresso.withAlpha (0.05f), 3, { 0, 1 } } };
+            bool dims = true;   // fades with Delta
+        };
+
         using SliderAttachment = juce::AudioProcessorValueTreeState::SliderAttachment;
         using ButtonAttachment = juce::AudioProcessorValueTreeState::ButtonAttachment;
 
         void attach (linen::LinenKnob&, const char* paramId, const juce::String& tooltip);
         void attach (linen::LinenPill&, const char* paramId, const juce::String& tooltip);
         void paintHeader (juce::Graphics&);
-        void paintSectionTitle (juce::Graphics&, const juce::String& title, int x, int y, float alpha);
+        void paintCard (juce::Graphics&, Card&);
         void updateDimming (double timestampSeconds);
         std::vector<juce::Component*> dimmable();
+        float param (const char* paramId) const;
+        float presence() const;
 
         LinenAudioProcessor& processor;
         linen::Backdrop backdrop;
+        std::array<Card, 5> cards;   // preamp, comp, de-harsh, air, output
 
         linen::SpectrumDisplay display;
 
-        // Header: presets and the Silk macro.
+        // Header: presets, Listen, and the two macros.
         PresetBox presetBox;
-        linen::LinenKnob silk { "Silk", 56.0f };
+        linen::ListenButton listenButton;
+        linen::LinenKnob pain { "Pain", 54.0f }, silk { "Silk", 54.0f };
 
         // Preamp + 1073-style EQ
         linen::LinenKnob drive { "Drive", 74.0f };
@@ -82,23 +97,29 @@ private:
 
         // De-harsh
         linen::LinenSegmented mode;
-        linen::LinenPill glare { "Glare" }, body { "Body" }, delta { "Delta" }, sidechain { "Sidechain" };
+        linen::LinenPill glare { "Glare" }, body { "Body" }, delta { "Delta" }, sidechain { "Key" };
         linen::LinenKnob depth { "Depth", 74.0f }, detail { "Detail", 52.0f }, attack { "Attack", 52.0f },
                          release { "Release", 52.0f }, maxCut { "Max cut", 52.0f };
 
         // Air
         linen::LinenKnob air { "Air", 52.0f }, deEss { "De-ess", 52.0f };
-        linen::LinenMeter sibilanceLight;
 
         // Output
-        linen::LinenKnob input { "Input", 52.0f }, mix { "Mix", 52.0f }, output { "Output", 52.0f };
+        linen::LinenKnob input { "Input", 50.0f }, mix { "Mix", 50.0f }, output { "Output", 50.0f };
+
+        // Jewel lamps, one per section, and the brand jewel.
+        linen::LinenLamp preampLamp, compLamp, deharshLamp, airLamp, outputLamp, brandLamp;
 
         std::vector<std::unique_ptr<SliderAttachment>> sliderAttachments;
         std::vector<std::unique_ptr<ButtonAttachment>> buttonAttachments;
 
+        // Pain scorches the linen's edge; repaint the canvas when it moves.
+        float scorch = 0.0f;
+        juce::ParameterAttachment painWatch;
+
         // Delta dims everything but De-harsh so the ear (and eye) stay on it.
         float dim = 1.0f;
-        double lastTick = 0.0;
+        double lastTick = 0.0, clock = 0.0;
         juce::VBlankAttachment vblank;
     };
 

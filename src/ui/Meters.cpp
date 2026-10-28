@@ -45,8 +45,8 @@ void LinenMeter::paint (juce::Graphics& g)
         if (shown > 0.0f)
         {
             const auto fill = r.reduced (1.5f).withHeight (juce::jmax (r.getWidth() - 3.0f, (r.getHeight() - 3.0f) * shown));
-            g.setGradientFill (juce::ColourGradient (electric, fill.getX(), fill.getY(),
-                                                     cobaltDeep, fill.getX(), fill.getBottom(), false));
+            g.setGradientFill (juce::ColourGradient (champagne, fill.getX(), fill.getY(),
+                                                     terracotta, fill.getX(), fill.getBottom(), false));
             g.fillRoundedRectangle (fill, (fill.getWidth()) * 0.5f);
         }
         return;

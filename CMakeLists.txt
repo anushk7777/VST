@@ -87,6 +87,7 @@ set(LINEN_PLUGIN_SOURCES
     src/ListenSession.cpp
     src/PluginProcessor.cpp
     src/PluginEditor.cpp
+    src/ui/Lights.cpp
     src/ui/LinenLookAndFeel.cpp
     src/ui/Backdrop.cpp
     src/ui/Meters.cpp

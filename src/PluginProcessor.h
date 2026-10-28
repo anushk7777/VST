@@ -48,6 +48,7 @@ public:
     float getCompReductionDb() const noexcept { return engine.getCompReductionDb(); }
     float getSibilance() const noexcept { return engine.getSibilance(); }
     float getPainStress() const noexcept { return engine.getPainStress(); }
+    float getInputLevel() const noexcept { return engine.getInputLevel(); }
 
     /** The Listen button: hear a few seconds of the vocal, then set Linen up for it. */
     ListenSession& getListenSession() noexcept { return listen; }

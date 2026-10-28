@@ -51,7 +51,7 @@ Preamp goes first so De-harsh cleans up any glare its harmonics add.
 
 ## GUI (JUCE 8)
 
-**Current look (owner's choice, Oct 2026): glossy white and electric cobalt.** Cool-white backdrop with a soft gloss sheen. Knobs are white porcelain; the main knob of each section (Silk, Drive, Cotton, Depth) is cobalt enamel. Switches use glossy cobalt; the veil is cobalt. The palette lives in `src/ui/Palette.h`. The original champagne/linen spec below is kept for reference.
+**Current look (owner's choice, Oct 2026): linen + cobalt lights.** Warm linen, champagne and espresso again, with electric cobalt only for light: jewel lamps, LEDs, the Listen ring and active arcs. Crimson is reserved for Pain. Sections sit on raised linen cards and the display is backlit. Previous look (superseded): glossy white and electric cobalt. Cool-white backdrop with a soft gloss sheen. Knobs are white porcelain; the main knob of each section (Silk, Drive, Cotton, Depth) is cobalt enamel. Switches use glossy cobalt; the veil is cobalt. The palette lives in `src/ui/Palette.h`. The original champagne/linen spec below is kept for reference.
 - **Palette:**
   - Alabaster `#F6F3EC` base;
   - Cashmere `#EBE4D8` for recessed wells;
