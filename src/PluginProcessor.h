@@ -46,6 +46,7 @@ public:
     /** Live meters for the GUI. */
     float getCompReductionDb() const noexcept { return engine.getCompReductionDb(); }
     float getSibilance() const noexcept { return engine.getSibilance(); }
+    float getPainStress() const noexcept { return engine.getPainStress(); }
 
 private:
     linen::params::Handles handles;

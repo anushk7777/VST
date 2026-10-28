@@ -20,6 +20,10 @@ struct DeharshParams
     bool glareFocus = true;      // lean toward the 2.5–5.5 kHz ear-canal region
     bool bodyProtect = true;     // never cut the sung fundamental
     bool delta = false;          // output only what is being removed
+
+    // Pain coupling (0..1): stricter above 5.5 kHz (clamps distortion fizz),
+    // +3 dB of headroom in the 1.5-3.2 kHz throat-ache band.
+    float painTilt = 0.0f;
 };
 
 /** Smoothed spectrum and gain reduction at log-spaced points, for the GUI.
@@ -113,6 +117,8 @@ private:
     std::vector<float> excessAverage, cutTarget, cutSmoothed, cutFinal, gains, binFreq, prefix;
     std::vector<float> binOctave, glareWeight, focusMask;
     float focusMaskLow = -1.0f, focusMaskHigh = -1.0f;
+    std::vector<float> tiltDepth, tiltHeadroom;
+    float tiltCachedFor = -1.0f;
     std::vector<int> queue;
 
     PitchTracker pitchTracker;

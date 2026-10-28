@@ -3,6 +3,7 @@
 //   LinenRender <in.wav> <out.wav> [options]
 //
 //   --input dB  --output dB  --mix 0..1  --block N
+//   --silk 0..1  --pain 0..100
 //   --drive 0..1  --hpf 0..4  --low-freq 0..4  --low-gain dB  --mid-freq 0..6  --mid-gain dB  --high-gain dB
 //   --depth 0..15  --detail 0..1  --attack ms  --release ms  --max-cut dB
 //   --focus-low Hz  --focus-high Hz  --hard 0|1  --glare 0|1  --body 0|1  --delta 0|1
@@ -48,6 +49,8 @@ int main (int argc, char** argv)
         else if (flag == "--output")     params.outputGainDb = value;
         else if (flag == "--mix")        params.mix = value;
         else if (flag == "--block")      blockSize = juce::jmax (1, (int) value);
+        else if (flag == "--silk")       params.silk = value;
+        else if (flag == "--pain")       params.pain = value / 100.0f;
         else if (flag == "--drive")      params.preampDrive = value;
         else if (flag == "--hpf")        params.eq.highPass = (int) value;
         else if (flag == "--low-freq")   params.eq.lowFreq = (int) value;

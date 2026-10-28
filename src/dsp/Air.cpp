@@ -99,9 +99,12 @@ void Air::updateShelf()
 
     const float open = 1.0f - sibilance;
     const float amount = juce::jlimit (0.0f, 1.0f, params.amount);
-    shelfDb = amount * open * (maxAirDb + maxBreathLiftDb * breath)
-            - juce::jlimit (0.0f, 1.0f, params.deEss) * maxDeEssDb * sibilance;
-    exciterGain = amount * open * maxExciter;
+    // Scorched air (Pain): the lift is damped and the top tips gently down.
+    const float scorch = juce::jlimit (0.0f, 1.0f, params.scorch);
+    shelfDb = amount * open * (maxAirDb + maxBreathLiftDb * breath) * (1.0f - 0.6f * scorch)
+            - juce::jlimit (0.0f, 1.0f, params.deEss) * maxDeEssDb * sibilance
+            - 2.5f * scorch;
+    exciterGain = amount * open * maxExciter * (1.0f - 0.7f * scorch);
 
     const auto c = std::abs (shelfDb) < 0.001f ? Biquad::Coeffs::identity()
                                                : Biquad::Coeffs::highShelf (sampleRate, shelfHz, 0.6, shelfDb);
@@ -118,7 +121,8 @@ void Air::process (juce::AudioBuffer<float>& buffer)
     if (chans == 0)
         return;
 
-    const bool idle = params.amount <= 0.0f && params.deEss <= 0.0f && std::abs (shelfDb) < 0.001f && exciterGain <= 0.0f;
+    const bool idle = params.amount <= 0.0f && params.deEss <= 0.0f && params.scorch <= 0.0f
+                   && std::abs (shelfDb) < 0.001f && exciterGain <= 0.0f;
     const float norm = 1.0f / (float) chans;
 
     // Exciter band, taken from the input before the shelf.

@@ -11,6 +11,7 @@ struct AirParams
 {
     float amount = 0.0f;   // 0..1: up to +6 dB of air above ~10 kHz, plus sparkle
     float deEss = 0.0f;    // 0..1: up to -6 dB on S and T sounds
+    float scorch = 0.0f;   // 0..1 (from Pain): damp the air, darker and dustier, like old tape
 };
 
 /** Air that never brings the esses back.

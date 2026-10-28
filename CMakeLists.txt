@@ -41,6 +41,7 @@ set(LINEN_DSP_SOURCES
     src/dsp/Air.cpp
     src/dsp/Eq1073.cpp
     src/dsp/LinenEngine.cpp
+    src/dsp/PainEngine.cpp
     src/dsp/Preamp.cpp
     src/dsp/PitchTracker.cpp
     src/dsp/ResonanceSuppressor.cpp
@@ -115,7 +116,8 @@ target_sources(LinenTests PRIVATE
     tests/DeharshTests.cpp
     tests/PreampEqTests.cpp
     tests/CompAirTests.cpp
-    tests/SilkTests.cpp)
+    tests/SilkTests.cpp
+    tests/PainTests.cpp)
 target_include_directories(LinenTests PRIVATE src tests)
 target_compile_definitions(LinenTests PRIVATE ${LINEN_COMMON_DEFINITIONS})
 target_link_libraries(LinenTests

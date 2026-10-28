@@ -84,7 +84,8 @@ void ResonanceSuppressor::prepare (double newSampleRate, int newNumChannels)
     detFrame.assign ((size_t) fftSize, 0.0f);
 
     for (auto* v : { &levelDb, &envelope, &scratchA, &scratchB, &excessAverage, &cutTarget,
-                     &cutSmoothed, &cutFinal, &gains, &binFreq, &binOctave, &glareWeight, &focusMask })
+                     &cutSmoothed, &cutFinal, &gains, &binFreq, &binOctave, &glareWeight, &focusMask,
+                     &tiltDepth, &tiltHeadroom })
         v->assign ((size_t) numBins, 0.0f);
 
     prefix.assign ((size_t) numBins + 1, 0.0f);
@@ -105,6 +106,7 @@ void ResonanceSuppressor::prepare (double newSampleRate, int newNumChannels)
     pitchTracker.prepare (sampleRate, fftSize);
 
     focusMaskLow = focusMaskHigh = -1.0f;  // forces a rebuild on the first frame
+    tiltCachedFor = -1.0f;
     reset();
 }
 
@@ -324,6 +326,18 @@ void ResonanceSuppressor::computeCuts()
             focusMask[(size_t) k] = bandMask (binFreq[(size_t) k], focusMaskLow, focusMaskHigh, 0.5f);
     }
 
+    if (! juce::exactlyEqual (params.painTilt, tiltCachedFor))
+    {
+        tiltCachedFor = params.painTilt;
+        const float tilt = juce::jlimit (0.0f, 1.0f, tiltCachedFor);
+        for (int k = 0; k < numBins; ++k)
+        {
+            const float hz = binFreq[(size_t) k];
+            tiltDepth[(size_t) k] = 1.0f + 0.8f * tilt * bandMask (hz, 5500.0f, 40000.0f, 0.5f);
+            tiltHeadroom[(size_t) k] = 3.0f * tilt * bandMask (hz, 1500.0f, 3200.0f, 1.0f / 3.0f);
+        }
+    }
+
     const float threshold = 1.0f + 3.0f * detail;
     const float knee = params.hard ? 0.0f : 6.0f;
     const float averageCoeff = 1.0f - std::exp (-hopSeconds / 2.0f);
@@ -335,7 +349,7 @@ void ResonanceSuppressor::computeCuts()
         if (params.glareFocus && excess > 0.0f)
             excess *= glareWeight[(size_t) k];
 
-        float bandThreshold = threshold;
+        float bandThreshold = threshold + tiltHeadroom[(size_t) k];
         if (! params.hard)
         {
             auto& average = excessAverage[(size_t) k];
@@ -354,7 +368,7 @@ void ResonanceSuppressor::computeCuts()
         else
             shaped = over;
 
-        scratchB[(size_t) k] = juce::jmin (maxCut, depthScale * shaped) * focusMask[(size_t) k];
+        scratchB[(size_t) k] = juce::jmin (maxCut, depthScale * tiltDepth[(size_t) k] * shaped) * focusMask[(size_t) k];
     }
 
     // 5. Spread each cut into a smooth bell: widen (max) then blur (mean).

@@ -17,7 +17,7 @@ struct Preset
 
 namespace id = params::id;
 
-inline const std::array<Preset, 6> factory {{
+inline const std::array<Preset, 8> factory {{
     { "House Silk", {} },
 
     { "Velvet Pop Lead", {
@@ -46,6 +46,12 @@ inline const std::array<Preset, 6> factory {{
     { "De-harsh Only", {
         { id::preampDrive, 0.0f }, { id::deharshDepth, 6.0f }, { id::compRatio, 1.0f }, { id::compCotton, 0.0f },
         { id::airAmount, 0.0f }, { id::airDeEss, 0.0f } } },
+
+    { "Velvet Ache", {
+        { id::silk, 0.65f }, { id::pain, 0.35f }, { id::eqHighPass, 2 }, { id::compCotton, 0.6f } } },
+
+    { "Torn Linen", {
+        { id::silk, 0.4f }, { id::pain, 0.8f }, { id::eqHighPass, 2 }, { id::compThreshold, -20.0f }, { id::compRatio, 2.5f } } },
 }};
 
 /** Sets every parameter to its default, then applies the preset's values. */

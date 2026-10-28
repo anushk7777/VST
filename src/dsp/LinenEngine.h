@@ -4,6 +4,7 @@
 
 #include "Air.h"
 #include "Eq1073.h"
+#include "PainEngine.h"
 #include "Preamp.h"
 #include "ResonanceSuppressor.h"
 #include "SilkCompressor.h"
@@ -29,11 +30,12 @@ struct EngineParams
     AirParams air;
 
     float silk = 0.5f;  // the Silk macro; 0.5 = settings as they are
+    float pain = 0.0f;  // the Pain macro, 0..1; 0 = off
 };
 
 /** The whole Linen signal chain, independent of the plugin wrapper.
 
-    Input gain → Preamp → EQ → De-harsh → Silk comp → Air → Output gain → Mix
+    Input gain → Preamp → EQ → Pain → De-harsh → Silk comp → Air → Output gain → Mix
 
     The dry signal for Mix is taken before the input gain and delayed by the
     chain's latency, so dry and wet stay sample-aligned at any Mix setting. */
@@ -56,6 +58,7 @@ public:
     DeharshDisplay& getDeharshDisplay() noexcept { return deharsh.getDisplay(); }
     float getCompReductionDb() const noexcept { return comp.getGainReductionDb(); }
     float getSibilance() const noexcept { return air.getSibilance(); }
+    float getPainStress() const noexcept { return painEngine.getStressLevel(); }
 
     /** Adds a pure delay to the wet path. Only for tests: it stands in for
         a latent module so the dry-path compensation can be checked. */
@@ -76,6 +79,7 @@ private:
 
     Preamp preamp;
     Eq1073 eq;
+    PainEngine painEngine;
     ResonanceSuppressor deharsh;
     std::vector<float> detector;
     SilkCompressor comp;

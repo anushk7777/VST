@@ -9,6 +9,20 @@ namespace
     constexpr double smoothingSeconds = 0.025;
 
     int maxDelayFor (int latency) { return juce::jmax (1, latency + 1); }
+
+    /** Pain reaches into its neighbours: more preamp drive, a De-harsh that
+        clamps the fizz above 5.5 kHz but leaves the throat band room to ache,
+        and (past 50%) a darker, dustier Air. */
+    EngineParams withPainCoupling (EngineParams p)
+    {
+        const float pain = juce::jlimit (0.0f, 1.0f, p.pain);
+        const float t = juce::jlimit (0.0f, 1.0f, (pain - 0.5f) / 0.5f);
+
+        p.preampDrive = juce::jlimit (0.0f, 1.0f, p.preampDrive + 0.25f * pain);
+        p.deharsh.painTilt = pain;
+        p.air.scorch = t * t * (3.0f - 2.0f * t);
+        return p;
+    }
 }
 
 void Engine::prepare (double newSampleRate, int maxBlockSize, int numChannels)
@@ -21,6 +35,7 @@ void Engine::prepare (double newSampleRate, int maxBlockSize, int numChannels)
 
     preamp.prepare (sampleRate, maxBlock, numChans);
     eq.prepare (sampleRate, numChans);
+    painEngine.prepare (sampleRate, maxBlock, numChans);
     deharsh.prepare (sampleRate, numChans);
     comp.prepare (sampleRate, maxBlock, numChans);
     air.prepare (sampleRate, maxBlock, numChans);
@@ -42,6 +57,7 @@ void Engine::reset()
 {
     preamp.reset();
     eq.reset();
+    painEngine.reset();
     deharsh.reset();
     comp.reset();
     air.reset();
@@ -55,7 +71,8 @@ void Engine::reset()
 
 void Engine::setParams (const EngineParams& newParams)
 {
-    params = SilkMacro::apply (newParams, newParams.silk);
+    params = withPainCoupling (SilkMacro::apply (newParams, newParams.silk));
+    painEngine.setPain (params.pain);
     preamp.setDrive (params.preampDrive);
     eq.setParams (params.eq);
     deharsh.setParams (params.deharsh);
@@ -77,7 +94,8 @@ void Engine::setExtraWetLatencyForTesting (int samples)
 
 void Engine::updateLatency()
 {
-    latencySamples = preamp.getLatencySamples() + deharsh.getLatencySamples() + comp.getLatencySamples() + testWetLatency;
+    latencySamples = preamp.getLatencySamples() + painEngine.getLatencySamples() + deharsh.getLatencySamples()
+                   + comp.getLatencySamples() + testWetLatency;
 
     dryDelay.setMaximumDelayInSamples (maxDelayFor (latencySamples));
     dryDelay.setDelay ((float) latencySamples);
@@ -129,6 +147,7 @@ void Engine::processChunk (juce::AudioBuffer<float>& buffer, const juce::AudioBu
     // Colour first: preamp, then the console EQ.
     preamp.process (wet);
     eq.process (wet);
+    painEngine.process (wet);
 
     // De-harsh, detecting from the vocal itself or from the sidechain.
     {
