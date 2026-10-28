@@ -1,5 +1,6 @@
 #include "PluginProcessor.h"
 #include "PluginEditor.h"
+#include "Presets.h"
 
 namespace
 {
@@ -70,6 +71,35 @@ void LinenAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::
     engine.process (main, sidechain ? &*sidechain : nullptr);
 }
 
+int LinenAudioProcessor::getNumPrograms()
+{
+    return (int) linen::presets::factory.size();
+}
+
+void LinenAudioProcessor::setCurrentProgram (int index)
+{
+    // Hosts call this with the current index while restoring a session;
+    // re-applying it there would wipe the restored settings.
+    if (index != currentProgram)
+        loadPreset (index);
+}
+
+void LinenAudioProcessor::loadPreset (int index)
+{
+    if (! juce::isPositiveAndBelow (index, getNumPrograms()))
+        return;
+
+    currentProgram = index;
+    state.state.setProperty ("preset", index, nullptr);
+    linen::presets::apply (state, linen::presets::factory[(size_t) index]);
+    updateHostDisplay (ChangeDetails().withProgramChanged (true));
+}
+
+const juce::String LinenAudioProcessor::getProgramName (int index)
+{
+    return juce::isPositiveAndBelow (index, getNumPrograms()) ? linen::presets::factory[(size_t) index].name : "";
+}
+
 juce::AudioProcessorEditor* LinenAudioProcessor::createEditor()
 {
     return new LinenAudioProcessorEditor (*this);
@@ -85,7 +115,10 @@ void LinenAudioProcessor::setStateInformation (const void* data, int sizeInBytes
 {
     if (auto xml = getXmlFromBinary (data, sizeInBytes))
         if (xml->hasTagName (state.state.getType()))
+        {
             state.replaceState (juce::ValueTree::fromXml (*xml));
+            currentProgram = juce::jlimit (0, getNumPrograms() - 1, (int) state.state.getProperty ("preset", 0));
+        }
 }
 
 juce::AudioProcessor* JUCE_CALLTYPE createPluginFilter()

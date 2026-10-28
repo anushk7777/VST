@@ -14,6 +14,7 @@ namespace id
     inline constexpr auto inputGain  = "input_gain";
     inline constexpr auto outputGain = "output_gain";
     inline constexpr auto mix        = "mix";
+    inline constexpr auto silk       = "silk";
 
     inline constexpr auto preampDrive = "preamp_drive";
     inline constexpr auto eqHighPass  = "eq_high_pass";
@@ -93,6 +94,12 @@ inline juce::AudioProcessorValueTreeState::ParameterLayout createLayout()
     layout.add (std::make_unique<Float> (juce::ParameterID { id::outputGain, version }, "Output",
                                          juce::NormalisableRange<float> (-24.0f, 24.0f, 0.1f), 0.0f,
                                          Attributes().withLabel ("dB").withStringFromValueFunction (formatDb)));
+
+    layout.add (std::make_unique<Float> (juce::ParameterID { id::silk, version }, "Silk",
+                                         juce::NormalisableRange<float> (0.0f, 1.0f, 0.001f), 0.5f,
+                                         Attributes().withStringFromValueFunction (formatPercent)
+                                                     .withValueFromStringFunction ([] (const juce::String& text)
+                                                                                   { return text.getFloatValue() / 100.0f; })));
 
     layout.add (std::make_unique<Float> (juce::ParameterID { id::mix, version }, "Mix",
                                          juce::NormalisableRange<float> (0.0f, 1.0f, 0.001f), 1.0f,
@@ -200,6 +207,7 @@ struct Handles
         : inputGain        (*state.getRawParameterValue (id::inputGain)),
           outputGain       (*state.getRawParameterValue (id::outputGain)),
           mix              (*state.getRawParameterValue (id::mix)),
+          silk             (*state.getRawParameterValue (id::silk)),
           preampDrive      (*state.getRawParameterValue (id::preampDrive)),
           eqHighPass       (*state.getRawParameterValue (id::eqHighPass)),
           eqLowFreq        (*state.getRawParameterValue (id::eqLowFreq)),
@@ -237,6 +245,7 @@ struct Handles
         p.inputGainDb  = inputGain.load();
         p.outputGainDb = outputGain.load();
         p.mix          = mix.load();
+        p.silk         = silk.load();
 
         p.preampDrive  = preampDrive.load();
         p.eq.highPass   = juce::roundToInt (eqHighPass.load());
@@ -276,6 +285,7 @@ struct Handles
     std::atomic<float>& inputGain;
     std::atomic<float>& outputGain;
     std::atomic<float>& mix;
+    std::atomic<float>& silk;
     std::atomic<float>& preampDrive;
     std::atomic<float>& eqHighPass;
     std::atomic<float>& eqLowFreq;

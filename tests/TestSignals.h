@@ -54,6 +54,46 @@ inline float maxAbsDifference (const juce::AudioBuffer<float>& a, const juce::Au
     return worst;
 }
 
+/** A sung phrase: notes of a bright vowel (harmonics of 196-294 Hz with
+    formants and a nasal 3.2 kHz ring), vibrato, swells, breath between notes.
+    Peaks around -6 dBFS, RMS around -18 dBFS: a typical tracked vocal. */
+inline juce::AudioBuffer<float> sungPhrase (int samples, double sampleRate = 48000.0, int channels = 2)
+{
+    juce::AudioBuffer<float> buffer (channels, samples);
+    buffer.clear();
+    juce::Random rng (21);
+    const double notes[] { 220.0, 247.0, 196.0, 294.0, 262.0, 220.0 };
+    double phase = 0.0;
+
+    for (int i = 0; i < samples; ++i)
+    {
+        const double t = i / sampleRate;
+        const int note = (int) (t / 0.5) % 6;
+        const double inNote = std::fmod (t, 0.5);
+        const double envelope = inNote < 0.42 ? std::sin (juce::MathConstants<double>::pi * inNote / 0.42) * (0.6 + 0.4 * (note % 3) / 2.0)
+                                              : 0.0;
+        const double f0 = notes[note] * (1.0 + 0.012 * std::sin (juce::MathConstants<double>::twoPi * 5.5 * t));
+        phase += juce::MathConstants<double>::twoPi * f0 / sampleRate;
+
+        double v = 0.0;
+        for (int n = 1; n * f0 < 14000.0; ++n)
+        {
+            const double hz = n * f0;
+            const double formant = 1.0 / (1.0 + std::pow ((hz - 700.0) / 500.0, 2.0))
+                                 + 0.5 / (1.0 + std::pow ((hz - 1200.0) / 400.0, 2.0))
+                                 + 0.9 / (1.0 + std::pow ((hz - 3200.0) / 180.0, 2.0))
+                                 + 0.15;
+            v += (n == 1 ? 0.5 : 0.3 / n) * formant * std::sin (phase * n);
+        }
+
+        const double breath = (inNote >= 0.42 ? 0.01 : 0.003) * (rng.nextFloat() - 0.5);
+        const float sample = (float) (0.42 * envelope * v + breath);
+        for (int ch = 0; ch < channels; ++ch)
+            buffer.setSample (ch, i, sample);
+    }
+    return buffer;
+}
+
 /** 4-term Blackman-Harris window (sidelobes below -92 dB). */
 inline float blackmanHarris (int i, int n)
 {

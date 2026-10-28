@@ -1,4 +1,5 @@
 #include "LinenEngine.h"
+#include "SilkMacro.h"
 
 namespace linen
 {
@@ -54,7 +55,7 @@ void Engine::reset()
 
 void Engine::setParams (const EngineParams& newParams)
 {
-    params = newParams;
+    params = SilkMacro::apply (newParams, newParams.silk);
     preamp.setDrive (params.preampDrive);
     eq.setParams (params.eq);
     deharsh.setParams (params.deharsh);

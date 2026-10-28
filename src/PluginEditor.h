@@ -33,6 +33,22 @@ private:
         void resized() override;
 
     private:
+        /** Shows the current preset; click for the list. */
+        class PresetBox final : public juce::Component,
+                                public juce::SettableTooltipClient
+        {
+        public:
+            explicit PresetBox (LinenAudioProcessor&);
+            void paint (juce::Graphics&) override;
+            void mouseEnter (const juce::MouseEvent&) override { hovering = true; repaint(); }
+            void mouseExit (const juce::MouseEvent&) override { hovering = false; repaint(); }
+            void mouseUp (const juce::MouseEvent&) override;
+
+        private:
+            LinenAudioProcessor& processor;
+            bool hovering = false;
+        };
+
         using SliderAttachment = juce::AudioProcessorValueTreeState::SliderAttachment;
         using ButtonAttachment = juce::AudioProcessorValueTreeState::ButtonAttachment;
 
@@ -47,6 +63,10 @@ private:
         linen::LinenWeave weave;
 
         linen::SpectrumDisplay display;
+
+        // Header: presets and the Silk macro.
+        PresetBox presetBox;
+        linen::LinenKnob silk { "Silk", 56.0f };
 
         // Preamp + 1073-style EQ
         linen::LinenKnob drive { "Drive", 74.0f };

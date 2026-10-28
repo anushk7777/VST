@@ -20,9 +20,9 @@ The full plan and the status of each phase are in [docs/PLAN.md](docs/PLAN.md).
 | 1 | Scaffold, CI, Input/Mix/Output, latency-matched dry path, the Linen look | done |
 | 2 | De-harsh (resonance suppressor) and its spectrum display | done |
 | 3 | 1073-style preamp and EQ | done |
-| 4 | Silk compressor and Air | done |
-| 5 | Silk macro, presets, GUI polish | next |
-| 6 | Auto-assist "Listen" button | planned |
+| 4 | Silk compressor (with Cotton) and Air | done |
+| 5 | Silk macro and presets | done (GUI polish continues) |
+| 6 | Auto-assist "Listen" button | next |
 | 7 | Neural preamp (needs real 1073 recordings) | planned |
 
 ## Install in FL Studio (Windows 11)
@@ -34,6 +34,27 @@ The full plan and the status of each phase are in [docs/PLAN.md](docs/PLAN.md).
 5. In a Mixer insert, open an empty slot and pick **Linen**.
 
 **Linen-Standalone-Windows** is the same thing as a standalone app, for a quick look without FL Studio.
+
+## Silk and presets
+
+**Silk** (top right) is one knob for the whole chain. At 50% your settings are exactly as you set them.
+- **Turning it up** adds the following together, each on its own curve in the order an engineer would reach for them, while an automatic trim keeps the level within 0.5 dB:
+  - preamp drive first;
+  - De-harsh depth across the whole travel;
+  - compression and Cotton in the middle;
+  - Air last.
+- **Turning it down** pulls everything back toward transparent.
+
+**Presets** (the box at the top, also listed in FL Studio's preset menu):
+
+| Preset | Character |
+|---|---|
+| House Silk | The defaults: warm, smooth, gently held. |
+| Velvet Pop Lead | Polished, silky, forward modern pop lead. |
+| Breathy Intimate | Close and airy; the breaths open up, the esses stay soft. |
+| Warm & Close | More preamp and Cotton: round, thick, cushioned. |
+| Transparent Polish | Barely there: de-harshed, lightly held, a touch of air. |
+| De-harsh Only | Just the resonance suppressor. |
 
 ## Using the Preamp and EQ
 

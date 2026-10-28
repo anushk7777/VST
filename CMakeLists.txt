@@ -44,7 +44,8 @@ set(LINEN_DSP_SOURCES
     src/dsp/Preamp.cpp
     src/dsp/PitchTracker.cpp
     src/dsp/ResonanceSuppressor.cpp
-    src/dsp/SilkCompressor.cpp)
+    src/dsp/SilkCompressor.cpp
+    src/dsp/SilkMacro.cpp)
 
 juce_add_binary_data(LinenAssets
     NAMESPACE LinenBinary
@@ -113,7 +114,8 @@ target_sources(LinenTests PRIVATE
     tests/EngineTests.cpp
     tests/DeharshTests.cpp
     tests/PreampEqTests.cpp
-    tests/CompAirTests.cpp)
+    tests/CompAirTests.cpp
+    tests/SilkTests.cpp)
 target_include_directories(LinenTests PRIVATE src tests)
 target_compile_definitions(LinenTests PRIVATE ${LINEN_COMMON_DEFINITIONS})
 target_link_libraries(LinenTests

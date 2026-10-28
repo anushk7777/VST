@@ -27,6 +27,8 @@ struct EngineParams
 
     CompParams comp;
     AirParams air;
+
+    float silk = 0.5f;  // the Silk macro; 0.5 = settings as they are
 };
 
 /** The whole Linen signal chain, independent of the plugin wrapper.

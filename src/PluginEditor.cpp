@@ -80,9 +80,60 @@ void LinenAudioProcessorEditor::resized()
 }
 
 //==============================================================================
+LinenAudioProcessorEditor::Canvas::PresetBox::PresetBox (LinenAudioProcessor& p) : processor (p)
+{
+    setMouseCursor (juce::MouseCursor::PointingHandCursor);
+}
+
+void LinenAudioProcessorEditor::Canvas::PresetBox::paint (juce::Graphics& g)
+{
+    using namespace linen::palette;
+    const auto r = getLocalBounds().toFloat().reduced (0.5f);
+
+    g.setColour (hovering ? cashmere : cashmere.withAlpha (0.5f));
+    g.fillRoundedRectangle (r, r.getHeight() * 0.5f);
+    g.setColour (champagneDeep.withAlpha (hovering ? 0.8f : 0.5f));
+    g.drawRoundedRectangle (r, r.getHeight() * 0.5f, 0.8f);
+
+    g.setColour (espresso);
+    g.setFont (linen::fonts::serifItalic (17.0f));
+    g.drawText (processor.getProgramName (processor.getCurrentProgram()), r, juce::Justification::centred, false);
+
+    // A small chevron: this opens a list.
+    const float cx = r.getRight() - 16.0f, cy = r.getCentreY();
+    juce::Path chevron;
+    chevron.startNewSubPath (cx - 3.5f, cy - 1.5f);
+    chevron.lineTo (cx, cy + 2.0f);
+    chevron.lineTo (cx + 3.5f, cy - 1.5f);
+    g.setColour (ink (hovering ? 0.6f : 0.35f));
+    g.strokePath (chevron, juce::PathStrokeType (1.1f, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
+}
+
+void LinenAudioProcessorEditor::Canvas::PresetBox::mouseUp (const juce::MouseEvent& e)
+{
+    if (! e.mouseWasClicked())
+        return;
+
+    juce::PopupMenu menu;
+    for (int i = 0; i < processor.getNumPrograms(); ++i)
+        menu.addItem (i + 1, processor.getProgramName (i), true, i == processor.getCurrentProgram());
+
+    menu.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (this).withMinimumWidth (getWidth()),
+                        [safe = juce::Component::SafePointer<PresetBox> (this)] (int result)
+                        {
+                            if (safe != nullptr && result > 0)
+                            {
+                                safe->processor.loadPreset (result - 1);
+                                safe->repaint();
+                            }
+                        });
+}
+
+//==============================================================================
 LinenAudioProcessorEditor::Canvas::Canvas (LinenAudioProcessor& p)
     : processor (p),
       display (p.getDeharshDisplay(), param (p, id::deharshFocusLow), param (p, id::deharshFocusHigh)),
+      presetBox (p),
       highPass (param (p, id::eqHighPass)),
       lowFreq (param (p, id::eqLowFreq)),
       midFreq (param (p, id::eqMidFreq)),
@@ -92,6 +143,12 @@ LinenAudioProcessorEditor::Canvas::Canvas (LinenAudioProcessor& p)
       vblank (this, [this] (double t) { updateDimming (t); })
 {
     addAndMakeVisible (display);
+
+    addAndMakeVisible (presetBox);
+    presetBox.setTooltip ("Factory presets");
+    attach (silk, id::silk, "Silk: one knob for the whole chain. Up adds drive, De-harsh, compression, Cotton and Air "
+                            "together at an even level; down pulls back toward transparent. 50% = your settings as they are");
+    silk.setBipolar (true);
 
     // Preamp + EQ
     attach (drive, id::preampDrive, "Drive: push the preamp for transformer weight and class-A warmth");
@@ -165,6 +222,9 @@ void LinenAudioProcessorEditor::Canvas::attach (linen::LinenPill& pill, const ch
 void LinenAudioProcessorEditor::Canvas::resized()
 {
     display.setBounds (margin, displayTop, getWidth() - margin * 2, displayHeight);
+
+    presetBox.setBounds (getWidth() / 2 - 110, 38, 220, 26);
+    place (silk, getWidth() - margin - 84, 6, 84);
 
     // Row A, left: Preamp — Drive, then EQ columns (selector under each gain).
     place (drive, margin, rowAKnobY, 100);
@@ -307,9 +367,9 @@ void LinenAudioProcessorEditor::Canvas::paintHeader (juce::Graphics& g)
     g.drawText ("silk for the voice", juce::Rectangle<int> (margin, 72, 340, 22), juce::Justification::centredLeft);
 
     g.setColour (ink (0.45f));
-    g.setFont (linen::fonts::sans (9.5f, 0.24f));
+    g.setFont (linen::fonts::sans (9.0f, 0.24f));
     g.drawText (juce::String (juce::CharPointer_UTF8 ("PREAMP  \xc2\xb7  DE-HARSH  \xc2\xb7  SILK COMP  \xc2\xb7  AIR")),
-                juce::Rectangle<int> (getWidth() - margin - 460, 40, 460, 20), juce::Justification::centredRight);
+                juce::Rectangle<int> (getWidth() / 2 - 200, 70, 400, 16), juce::Justification::centred);
 
     drawHairline (g, (float) margin, (float) (getWidth() - margin), 100.0f, champagne.withAlpha (0.55f));
 }
