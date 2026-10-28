@@ -54,4 +54,27 @@ inline float maxAbsDifference (const juce::AudioBuffer<float>& a, const juce::Au
     return worst;
 }
 
+/** 4-term Blackman-Harris window (sidelobes below -92 dB). */
+inline float blackmanHarris (int i, int n)
+{
+    const double x = juce::MathConstants<double>::twoPi * i / (n - 1);
+    return (float) (0.35875 - 0.48829 * std::cos (x) + 0.14128 * std::cos (2 * x) - 0.01168 * std::cos (3 * x));
+}
+
+/** Level of a single tone (dBFS) from a windowed DFT at exactly hz. */
+inline double toneDb (const juce::AudioBuffer<float>& audio, double hz, int start = 16384, int length = 32768, double sampleRate = 48000.0)
+{
+    double re = 0.0, im = 0.0, wsum = 0.0;
+    for (int i = 0; i < length; ++i)
+    {
+        const double w = blackmanHarris (i, length);
+        const double phase = juce::MathConstants<double>::twoPi * hz * i / sampleRate;
+        const double x = audio.getSample (0, start + i) * w;
+        re += x * std::cos (phase);
+        im -= x * std::sin (phase);
+        wsum += w;
+    }
+    return 20.0 * std::log10 (2.0 * std::sqrt (re * re + im * im) / wsum + 1.0e-20);
+}
+
 } // namespace linen::test

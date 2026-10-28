@@ -35,29 +35,6 @@ namespace
         return out;
     }
 
-    /** 4-term Blackman-Harris window (sidelobes below -92 dB). */
-    float blackmanHarris (int i, int n)
-    {
-        const double x = juce::MathConstants<double>::twoPi * i / (n - 1);
-        return (float) (0.35875 - 0.48829 * std::cos (x) + 0.14128 * std::cos (2 * x) - 0.01168 * std::cos (3 * x));
-    }
-
-    /** Level of a single tone (dBFS) from a windowed DFT at exactly hz. */
-    double toneDb (const juce::AudioBuffer<float>& audio, double hz, int start = 16384, int length = 32768)
-    {
-        double re = 0.0, im = 0.0, wsum = 0.0;
-        for (int i = 0; i < length; ++i)
-        {
-            const double w = blackmanHarris (i, length);
-            const double phase = juce::MathConstants<double>::twoPi * hz * i / sr;
-            const double x = audio.getSample (0, start + i) * w;
-            re += x * std::cos (phase);
-            im -= x * std::sin (phase);
-            wsum += w;
-        }
-        return 20.0 * std::log10 (2.0 * std::sqrt (re * re + im * im) / wsum + 1.0e-20);
-    }
-
     /** Highest spectral level (relative to the fundamental) away from the
         fundamental, its in-band harmonics and DC: aliasing and noise. */
     double worstSpurDb (const juce::AudioBuffer<float>& audio, double fundamentalHz)

@@ -35,7 +35,7 @@ Preamp goes first so De-harsh cleans up any glare its harmonics add.
    - Mid bell at 360/700/1.6k/3.2k/4.8k/7.2k, with Q that changes with gain.
    - High shelf at 12 kHz.
    - Stepped switches.
-4. **SilkCompressor**: feed-forward RMS, about 10 dB soft knee, ratio 1.5–4. Two-stage opto-style release that follows the material. Sidechain HPF around 100 Hz, auto makeup and Mix.
+4. **SilkCompressor** (updated after studying the 2254/33609 diode bridge and the LA-2A's T4 cell): two-stage optical release with memory (fast half at Release, slow half 0.4–5 s depending on how long it has held), presence-weighted detection, and the **Cotton** texture: diode-bridge-style 2nd/3rd harmonics at 2x plus GR-coupled low-mid warmth and soft top, active only while compressing. Original spec:: feed-forward RMS, about 10 dB soft knee, ratio 1.5–4. Two-stage opto-style release that follows the material. Sidechain HPF around 100 Hz, auto makeup and Mix.
 5. **Air**: above 10 kHz, an even-harmonic exciter plus an upward micro-compressor that lifts breath. A **differential sibilance detector** compares HF (6–14 kHz) with vowel energy (200 Hz–2.5 kHz). When an S or T spikes the ratio, the shelf smoothly turns into a gentle cut; on vowels and breaths it opens.
 6. **Mix / latency**
    - The dry path runs through a delay line equal to `ResonanceSuppressor + Preamp1073` latency. It is updated in `prepareToPlay`, and `setLatencySamples` is set to match.

@@ -99,40 +99,126 @@ public:
             }
         }
 
-        beginTest ("Opto-style release: slower after long compression than after a short peak");
+        beginTest ("Optical two-stage release: half lets go fast, the rest slowly, slower after long holds");
         {
-            const auto recovery = [this] (int burstSamples)
+            struct Recovery { double half, full; };
+
+            const auto recovery = [this] (int burstSamples) -> Recovery
             {
                 SilkCompressor comp;
                 CompParams p;
                 p.thresholdDb = -30.0f;
                 p.ratio = 4.0f;
-                p.releaseMs = 80.0f;
+                p.releaseMs = 60.0f;
                 p.autoMakeup = false;
                 comp.setParams (p);
                 comp.prepare (sr, block, 1);
 
-                // Loud burst, then a quiet tone: time until the quiet tone is back within 1 dB.
-                const int total = burstSamples + 48000 * 3;
+                // Loud burst, then a quiet tone: track the meter as the quiet tone comes back.
+                const int total = burstSamples + 48000 * 8;
                 auto audio = silence (total);
                 addSine (audio, 1000.0, -6.0f, 0, burstSamples);
                 addSine (audio, 1000.0, -50.0f, burstSamples, total);
-                runBlocks (comp, audio);
 
-                const float settled = rmsDb (audio, total - 4800, 4800);
-                for (int pos = burstSamples; pos + 480 <= total; pos += 480)
-                    if (rmsDb (audio, pos, 480) > settled - 1.0f)
-                        return (double) (pos - burstSamples) / sr;
-
-                expect (false, "never recovered");
-                return 10.0;
+                float peakGr = 0.0f;
+                Recovery r { -1.0, -1.0 };
+                for (int pos = 0; pos < total; pos += 240)
+                {
+                    juce::AudioBuffer<float> b (audio.getArrayOfWritePointers(), 1, pos, juce::jmin (240, total - pos));
+                    comp.process (b);
+                    const float gr = comp.getGainReductionDb();
+                    if (pos < burstSamples)
+                        peakGr = gr;
+                    else
+                    {
+                        const double t = (double) (pos + 240 - burstSamples) / sr;
+                        if (r.half < 0.0 && gr < peakGr * 0.5f) r.half = t;
+                        if (r.full < 0.0 && gr < 1.0f) r.full = t;
+                    }
+                }
+                expect (r.full > 0.0, "never recovered");
+                return r;
             };
 
-            const double afterPeak = recovery (4800);       // 0.1 s
-            const double afterHold = recovery (48000 * 3);  // 3 s
-            logMessage ("recovery after a peak " + juce::String (afterPeak, 3) + " s, after a long hold " + juce::String (afterHold, 3) + " s");
-            expectLessThan (afterPeak, 0.6);
-            expectGreaterThan (afterHold, afterPeak * 1.8);
+            const auto afterPeak = recovery (4800);       // 0.1 s
+            const auto afterHold = recovery (48000 * 4);  // 4 s
+            logMessage ("after a peak: half " + juce::String (afterPeak.half, 3) + " s, full " + juce::String (afterPeak.full, 3)
+                        + " s; after a long hold: half " + juce::String (afterHold.half, 3) + " s, full " + juce::String (afterHold.full, 3) + " s");
+            expectLessThan (afterPeak.half, 0.2, "first half releases quickly");
+            expectLessThan (afterHold.half, 0.3, "...even after a long hold");
+            expectGreaterThan (afterHold.full, afterPeak.full * 2.0, "the cell's memory slows the tail after a long hold");
+        }
+
+        beginTest ("Cotton: no colour at all while it isn't compressing");
+        {
+            SilkCompressor comp;
+            CompParams p;
+            p.thresholdDb = -10.0f;
+            p.ratio = 3.0f;
+            p.cotton = 1.0f;
+            p.autoMakeup = false;
+            comp.setParams (p);
+            comp.prepare (sr, block, 1);
+            auto tone = silence (65536);
+            addSine (tone, 500.0, -30.0f);
+            runBlocks (comp, tone);
+            const double h1 = toneDb (tone, 500.0), h2 = toneDb (tone, 1000.0), h3 = toneDb (tone, 1500.0);
+            expectLessThan (h2 - h1, -100.0);
+            expectLessThan (h3 - h1, -100.0);
+        }
+
+        beginTest ("Cotton: gentle, mostly 2nd-harmonic colour while compressing");
+        {
+            const auto harmonics = [] (float cotton)
+            {
+                SilkCompressor comp;
+                CompParams p;
+                p.thresholdDb = -24.0f;
+                p.ratio = 3.0f;
+                p.cotton = cotton;
+                p.autoMakeup = false;
+                comp.setParams (p);
+                comp.prepare (sr, block, 1);
+                auto tone = silence (65536);
+                addSine (tone, 300.0, -6.0f);
+                runBlocks (comp, tone);
+                const double h1 = toneDb (tone, 300.0);
+                return std::pair { toneDb (tone, 600.0) - h1, toneDb (tone, 900.0) - h1 };
+            };
+
+            const auto [h2, h3] = harmonics (1.0f);
+            const auto [cleanH2, cleanH3] = harmonics (0.0f);
+            logMessage ("cotton 1: H2 " + juce::String (h2, 1) + " dB, H3 " + juce::String (h3, 1)
+                        + " dB; cotton 0: H2 " + juce::String (cleanH2, 1) + " dB");
+            expectGreaterThan (h2, -55.0, "colour should be there");
+            expectLessThan (h2, -30.0, "...but gentle");
+            expectGreaterThan (h2, h3, "2nd harmonic leads");
+            expectLessThan (cleanH2, -90.0, "cotton 0 stays clean");
+        }
+
+        beginTest ("Cotton: loud lines turn warmer and softer on top");
+        {
+            const auto shape = [] (float cotton)
+            {
+                SilkCompressor comp;
+                CompParams p;
+                p.thresholdDb = -36.0f;
+                p.ratio = 4.0f;
+                p.cotton = cotton;
+                p.autoMakeup = false;
+                comp.setParams (p);
+                comp.prepare (sr, block, 1);
+                auto noise = whiteNoise (1, 48000 * 2, 0.4f, 4);
+                runBlocks (comp, noise);
+                return std::pair { bandDb (noise, 220, 340, 24000, 48000) - bandDb (noise, 900, 1200, 24000, 48000),
+                                   bandDb (noise, 11000, 15000, 24000, 48000) - bandDb (noise, 900, 1200, 24000, 48000) };
+            };
+
+            const auto [warm1, top1] = shape (1.0f);
+            const auto [warm0, top0] = shape (0.0f);
+            logMessage ("low-mid " + juce::String (warm1 - warm0, 2) + " dB, top " + juce::String (top1 - top0, 2) + " dB");
+            expectGreaterThan (warm1 - warm0, 0.8f, "warmer");
+            expectLessThan (top1 - top0, -1.5f, "softer on top");
         }
 
         beginTest ("Side-chain high-pass: low boom pumps it far less than the voice does");
@@ -157,14 +243,17 @@ public:
             expectLessThan (lowGr, voiceGr - 4.0f);
         }
 
-        beginTest ("Ratio 1 is a clean bypass");
+        beginTest ("Ratio 1 is a clean, latency-aligned bypass, even with Cotton up");
         {
             SilkCompressor comp;
+            CompParams p;
+            p.cotton = 1.0f;
+            comp.setParams (p);
             comp.prepare (sr, block, 2);
             auto in = whiteNoise (2, 24000, 0.9f);
             auto out = in;
             runBlocks (comp, out);
-            expectLessOrEqual (maxAbsDifference (in, out), 1.0e-6f);
+            expectLessOrEqual (maxAbsDifference (in, out, comp.getLatencySamples()), 1.0e-6f);
         }
     }
 };

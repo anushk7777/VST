@@ -54,8 +54,9 @@ private:
         linen::LinenStepper highPass, lowFreq, midFreq;
 
         // Silk compressor
-        linen::LinenKnob threshold { "Threshold", 52.0f }, ratio { "Ratio", 52.0f }, compAttack { "Attack", 52.0f },
-                         compRelease { "Release", 52.0f }, compMix { "Blend", 52.0f };
+        linen::LinenKnob cotton { "Cotton", 62.0f };
+        linen::LinenKnob threshold { "Thresh", 46.0f }, ratio { "Ratio", 46.0f }, compAttack { "Attack", 46.0f },
+                         compRelease { "Release", 46.0f }, compMix { "Blend", 46.0f };
         linen::LinenPill makeup { "Auto gain" };
         linen::LinenMeter compMeter;
 

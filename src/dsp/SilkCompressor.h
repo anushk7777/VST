@@ -12,16 +12,28 @@ struct CompParams
     float thresholdDb = 0.0f;   // -48..0
     float ratio = 1.0f;         // 1..6 (1 = off)
     float attackMs = 12.0f;
-    float releaseMs = 120.0f;   // fast part of the release
+    float releaseMs = 60.0f;    // the fast half of the release
     bool autoMakeup = true;
     float mix = 1.0f;           // parallel blend
+    float cotton = 0.0f;        // 0..1: texture while compressing
 };
 
-/** The "invisible" compressor: feed-forward, stereo-linked RMS detection
-    through a 100 Hz side-chain high-pass (so plosives and proximity boom
-    don't pump it), a wide 10 dB soft knee, and an opto-style two-stage
-    release: quick after a short peak, slowing toward ~1.5 s the longer it
-    has been holding the voice down. No latency. */
+/** The "invisible" compressor, with the Cotton texture.
+
+    Detection: feed-forward, stereo-linked RMS through a 100 Hz high-pass (so
+    plosives and boom don't pump it) and a gentle presence lift (an optical
+    cell reacts more to bright energy), into a wide 10 dB soft knee.
+
+    Release, after the optical cell: half of the gain reduction lets go at
+    the Release time; the other half lets go slowly, from 0.4 s up to 5 s the
+    longer and harder it has been holding (the cell's "memory"). Heavy,
+    sustained compression therefore never pumps.
+
+    Cotton, only while it compresses, and in proportion to how hard:
+      - diode-bridge style harmonics (mostly 2nd, some 3rd), at 2x oversampling;
+      - a touch of low-mid warmth and a softer top, so loud lines get rounder
+        and warmer while quiet, breathy ones stay open.
+    With no gain reduction, or Cotton at 0, the signal path is a pure gain. */
 class SilkCompressor
 {
 public:
@@ -32,6 +44,9 @@ public:
     void setParams (const CompParams& p) { params = p; }
     void process (juce::AudioBuffer<float>& buffer);
 
+    /** Constant after prepare(): the oversampled colour path's latency. */
+    int getLatencySamples() const noexcept { return latency; }
+
     /** Static curve: gain change in dB for a steady input level (negative = reduction). */
     static float staticGainDb (float inputDb, float thresholdDb, float ratio);
 
@@ -39,18 +54,34 @@ public:
     float getGainReductionDb() const noexcept { return meterDb.load (std::memory_order_relaxed); }
 
 private:
+    void updateTexture (float reduction);
+
     double sampleRate = 48000.0;
     int numChannels = 0;
+    int latency = 0;
     CompParams params;
 
-    Biquad detectorHighPass;
+    // Detector.
+    Biquad detectorHighPass, detectorPresence;
     float rmsState = 0.0f, rmsCoeff = 0.0f;
-    float reductionDb = 0.0f;     // smoothed, positive
-    float history = 0.0f;         // 0..1: how long it has been compressing
-    float historyCoeff = 0.0f;
+
+    // Two-stage release.
+    float fastStage = 0.0f, slowStage = 0.0f;   // dB of reduction, each half of the total
+    float memory = 0.0f, memoryRise = 0.0f, memoryFall = 0.0f;
 
     juce::SmoothedValue<float> makeup, mix;
+    std::vector<float> gainRamp, colourRamp;
     std::atomic<float> meterDb { 0.0f };
+
+    // Cotton: harmonics at 2x, added as a difference so "no colour" is exact.
+    std::unique_ptr<juce::dsp::Oversampling<float>> oversampling;
+    juce::AudioBuffer<float> compressed, colour, dry;
+    juce::dsp::DelayLine<float, juce::dsp::DelayLineInterpolationTypes::None> alignDelay, dryDelay;
+    std::vector<Biquad> colourDcBlock;
+
+    // Cotton: GR-coupled warmth and soft top, redesigned every 16 samples.
+    std::vector<std::array<Biquad, 2>> texture;
+    float textureAmount = 0.0f;
 };
 
 } // namespace linen

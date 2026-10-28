@@ -42,6 +42,7 @@ namespace id
     inline constexpr auto compRelease   = "comp_release";
     inline constexpr auto compMakeup    = "comp_makeup";
     inline constexpr auto compMix       = "comp_mix";
+    inline constexpr auto compCotton    = "comp_cotton";
 
     inline constexpr auto airAmount = "air_amount";
     inline constexpr auto airDeEss  = "air_deess";
@@ -175,11 +176,13 @@ inline juce::AudioProcessorValueTreeState::ParameterLayout createLayout()
                                          centredRange (1.0f, 80.0f, 12.0f, 0.01f), 12.0f,
                                          Attributes().withLabel ("ms").withStringFromValueFunction (formatMs)));
     layout.add (std::make_unique<Float> (juce::ParameterID { id::compRelease, version }, "Comp Release",
-                                         centredRange (30.0f, 600.0f, 140.0f, 0.1f), 120.0f,
+                                         centredRange (20.0f, 400.0f, 80.0f, 0.1f), 60.0f,
                                          Attributes().withLabel ("ms").withStringFromValueFunction (formatMs)));
     layout.add (std::make_unique<Bool> (juce::ParameterID { id::compMakeup, version }, "Comp Auto Makeup", true));
     layout.add (std::make_unique<Float> (juce::ParameterID { id::compMix, version }, "Comp Mix",
                                          juce::NormalisableRange<float> (0.0f, 1.0f, 0.001f), 1.0f, percentAttributes));
+    layout.add (std::make_unique<Float> (juce::ParameterID { id::compCotton, version }, "Comp Cotton",
+                                         juce::NormalisableRange<float> (0.0f, 1.0f, 0.001f), 0.5f, percentAttributes));
 
     // Air
     layout.add (std::make_unique<Float> (juce::ParameterID { id::airAmount, version }, "Air",
@@ -222,6 +225,7 @@ struct Handles
           compRelease      (*state.getRawParameterValue (id::compRelease)),
           compMakeup       (*state.getRawParameterValue (id::compMakeup)),
           compMix          (*state.getRawParameterValue (id::compMix)),
+          compCotton       (*state.getRawParameterValue (id::compCotton)),
           airAmount        (*state.getRawParameterValue (id::airAmount)),
           airDeEss         (*state.getRawParameterValue (id::airDeEss))
     {
@@ -262,6 +266,7 @@ struct Handles
         p.comp.releaseMs   = compRelease.load();
         p.comp.autoMakeup  = compMakeup.load() > 0.5f;
         p.comp.mix         = compMix.load();
+        p.comp.cotton      = compCotton.load();
 
         p.air.amount = airAmount.load();
         p.air.deEss  = airDeEss.load();
@@ -296,6 +301,7 @@ struct Handles
     std::atomic<float>& compRelease;
     std::atomic<float>& compMakeup;
     std::atomic<float>& compMix;
+    std::atomic<float>& compCotton;
     std::atomic<float>& airAmount;
     std::atomic<float>& airDeEss;
 };

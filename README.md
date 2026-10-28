@@ -51,13 +51,25 @@ Click a frequency selector for its list, or scroll/drag over it to step.
 
 ## Using Silk comp and Air
 
-**Silk comp** is built to be felt, not heard. It uses RMS detection, a wide 10 dB soft knee and a 100 Hz sidechain high-pass, so plosives and boom don't pump it. Its release behaves like an optical compressor: after a short peak it lets go quickly, and on long held phrases it slows down by itself toward about 1.5 s.
+**Silk comp** is built to be felt, not heard:
+- RMS detection with a slight lean toward the upper mids, as an optical cell has.
+- A wide 10 dB soft knee.
+- A 100 Hz sidechain high-pass, so plosives and boom don't pump it.
+- A two-stage optical release. Half of the gain reduction lets go at the Release time. The other half lets go slowly, between 0.4 s and 5 s, and more slowly the longer and harder it has been holding the voice, like an optical cell's memory. Heavy, sustained compression therefore never pumps.
+
+**Cotton** is Linen's signature texture. It only acts while the compressor is working, and in proportion to how hard:
+- soft diode-bridge-style harmonics (mostly 2nd, run at 2× oversampling);
+- a touch of low-mid warmth;
+- a softer top.
+
+Loud, belted lines turn round, warm and cushioned. Quiet, breathy lines are untouched, and that's where Air opens them up. At 0 the compressor is a clean gain.
 
 | Control | What it does |
 |---|---|
+| **Cotton** | The texture while compressing. 0 = clean; 50% = the house sound; 100% = plush. |
 | **Threshold / Ratio** | Where it starts and how firmly it holds. A ratio of 1.5–2.5 is invisible; 4 and above is firm. |
 | **Attack** | Slower attack lets consonants through for a natural edge. |
-| **Release** | The fast part of the release. The slow part adds itself on long phrases. |
+| **Release** | The fast half of the release. The slow half follows the singing by itself. |
 | **Blend** | Parallel compression: mix in the uncompressed voice. |
 | **Auto gain** | Makes up for the typical gain reduction. |
 

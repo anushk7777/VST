@@ -65,8 +65,9 @@ void Preamp::prepare (double newSampleRate, int maxBlockSize, int newNumChannels
         c.inputIron.fluxGain = 0.35f;
         c.outputIron.fluxGain = 0.18f;
 
-        // Output iron rolls the top off gently above the audio band.
-        c.outputLowPass.c = Biquad::Coeffs::lowPass (overSampleRate, 40000.0, 0.7);
+        // Output iron: a slight resonance above the audio band (the top "sheen"
+        // these transformers are known for), then a gentle roll-off.
+        c.outputLowPass.c = Biquad::Coeffs::lowPass (overSampleRate, 40000.0, 0.85);
         c.dcBlock.c = Biquad::Coeffs::highPassFirstOrder (sampleRate, 8.0);
     }
 

@@ -11,7 +11,7 @@ namespace
     // Two rows of sections: Preamp | Silk comp, then De-harsh | Air | Output.
     constexpr int rowATitleY = 332, rowAKnobY = 370;
     constexpr int rowBTitleY = 508, rowBKnobY = 548;
-    constexpr int rightColumnX = 600;   // Silk comp, Air
+    constexpr int rightColumnX = 594;   // Silk comp, Air
     constexpr int outputX = 790;
 
     constexpr int eqColumnWidth = 100;
@@ -107,10 +107,12 @@ LinenAudioProcessorEditor::Canvas::Canvas (LinenAudioProcessor& p)
     }
 
     // Silk compressor
+    attach (cotton, id::compCotton, "Cotton: the signature texture. While it compresses it adds soft diode-bridge harmonics, "
+                                    "low-mid warmth and a softer top, so loud lines turn round and warm while quiet ones stay open");
     attach (threshold, id::compThreshold, "Threshold: where the compressor starts to hold the voice");
     attach (ratio, id::compRatio, "Ratio: 1.5-2.5 is invisible, 4+ is firm");
     attach (compAttack, id::compAttack, "Attack: slower lets consonants through for a natural edge");
-    attach (compRelease, id::compRelease, "Release (fast part): it slows down by itself on long phrases, like an opto");
+    attach (compRelease, id::compRelease, "Release: the fast half. The other half lets go slowly, slower still after long held phrases, like an optical cell");
     attach (compMix, id::compMix, "Blend: parallel compression, mixed with the uncompressed voice");
     attach (makeup, id::compMakeup, "Auto gain: make up for the average gain reduction");
     compMeter.setTooltip ("Gain reduction (0-12 dB)");
@@ -178,13 +180,14 @@ void LinenAudioProcessorEditor::Canvas::resized()
 
     // Row A, right: Silk comp.
     makeup.setBounds (rightColumnX + 136, rowATitleY + 3, makeup.getIdealWidth(), 22);
-    int x = rightColumnX;
+    place (cotton, rightColumnX - 6, rowAKnobY - 2, 90);
+    int x = cotton.getRight() - 4;
     for (auto* knob : { &threshold, &ratio, &compAttack, &compRelease, &compMix })
     {
-        place (*knob, x, rowAKnobY + 4, smallColumn);
-        x += smallColumn;
+        place (*knob, x, rowAKnobY + 6, 62);
+        x += 62;
     }
-    compMeter.setBounds (x + 8, rowAKnobY + 6, 7, 78);
+    compMeter.setBounds (x + 4, rowAKnobY + 6, 7, 74);
 
     // Row B, left: De-harsh — switches beside the title, then knobs.
     x = margin + 112;
@@ -222,7 +225,7 @@ void LinenAudioProcessorEditor::Canvas::resized()
 std::vector<juce::Component*> LinenAudioProcessorEditor::Canvas::dimmable()
 {
     return { &drive, &lowGain, &midGain, &highGain, &highPass, &lowFreq, &midFreq,
-             &threshold, &ratio, &compAttack, &compRelease, &compMix, &makeup, &compMeter,
+             &cotton, &threshold, &ratio, &compAttack, &compRelease, &compMix, &makeup, &compMeter,
              &air, &deEss, &sibilanceLight, &input, &mix, &output };
 }
 

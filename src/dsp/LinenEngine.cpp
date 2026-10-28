@@ -76,7 +76,7 @@ void Engine::setExtraWetLatencyForTesting (int samples)
 
 void Engine::updateLatency()
 {
-    latencySamples = preamp.getLatencySamples() + deharsh.getLatencySamples() + testWetLatency;
+    latencySamples = preamp.getLatencySamples() + deharsh.getLatencySamples() + comp.getLatencySamples() + testWetLatency;
 
     dryDelay.setMaximumDelayInSamples (maxDelayFor (latencySamples));
     dryDelay.setDelay ((float) latencySamples);
