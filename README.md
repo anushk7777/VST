@@ -1,6 +1,6 @@
 # Linen
 
-*silk for the voice* · by **Maison Dua**
+*silk for the voice* · by **Anushk Dua**
 
 Linen is a vocal plugin (VST3) built to make vocals smooth and expensive-sounding. It combines:
 

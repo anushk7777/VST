@@ -351,7 +351,7 @@ void LinenAudioProcessorEditor::Canvas::paint (juce::Graphics& g)
 
     g.setColour (ink (0.38f));
     g.setFont (linen::fonts::sans (9.5f, 0.22f));
-    g.drawText ("MAISON DUA", juce::Rectangle<int> (margin, getHeight() - 30, 200, 20), juce::Justification::centredLeft);
+    g.drawText ("ANUSHK DUA", juce::Rectangle<int> (margin, getHeight() - 30, 200, 20), juce::Justification::centredLeft);
     g.drawText ("v" JucePlugin_VersionString, juce::Rectangle<int> (getWidth() - margin - 200, getHeight() - 30, 200, 20),
                 juce::Justification::centredRight);
 }

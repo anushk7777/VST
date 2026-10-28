@@ -64,10 +64,10 @@ set(LINEN_COMMON_DEFINITIONS
 
 # ---- Plugin -----------------------------------------------------------------
 juce_add_plugin(Linen
-    COMPANY_NAME             "Maison Dua"
+    COMPANY_NAME             "Anushk Dua"
     COMPANY_WEBSITE          "https://github.com/anushk7777/VST"
-    BUNDLE_ID                com.maisondua.linen
-    PLUGIN_MANUFACTURER_CODE Mdua
+    BUNDLE_ID                com.anushkdua.linen
+    PLUGIN_MANUFACTURER_CODE Adua
     PLUGIN_CODE              Lnn1
     PRODUCT_NAME             "Linen"
     DESCRIPTION              "Silky vocal processor"
