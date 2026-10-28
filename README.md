@@ -138,7 +138,7 @@ build/LinenRender_artefacts/Release/LinenRender in.wav out.wav --depth 6 --detai
 | `src/dsp/` | The signal chain (`LinenEngine`). No plugin or GUI code, so tests and the render tool run the same engine. |
 | `src/Parameters.h` | Every parameter, in one place. Parameter IDs are permanent. |
 | `src/PluginProcessor.*`, `src/PluginEditor.*` | The JUCE plugin wrapper and window. |
-| `src/ui/` | Look and feel: palette, linen weave background, champagne knobs. |
+| `src/ui/` | Look and feel: white and electric-cobalt palette (`Palette.h`), glossy backdrop, porcelain and cobalt-enamel knobs. |
 | `tests/` | DSP unit tests. |
 | `tools/render.cpp` | Offline render CLI. |
 | `tools/snapshot.cpp` | Dev tool: renders the window to PNG while a test vocal plays (`-DLINEN_BUILD_SNAPSHOT=ON`). |

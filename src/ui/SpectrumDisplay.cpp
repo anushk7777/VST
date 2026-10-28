@@ -110,12 +110,22 @@ void SpectrumDisplay::paint (juce::Graphics& g)
 {
     using namespace palette;
 
-    const auto well = getLocalBounds().toFloat();
+    const auto bounds = getLocalBounds().toFloat();
     juce::Path wellPath;
-    wellPath.addRoundedRectangle (well, 14.0f);
-    g.setColour (cashmere);
+    wellPath.addRoundedRectangle (bounds, 14.0f);
+    g.setColour (well);
     g.fillPath (wellPath);
     wellShadow.render (g, wellPath);
+
+    // Glass: a soft reflection across the top of the well.
+    {
+        juce::Graphics::ScopedSaveState save (g);
+        g.reduceClipRegion (wellPath);
+        const auto glass = bounds.withHeight (bounds.getHeight() * 0.32f);
+        g.setGradientFill (juce::ColourGradient (juce::Colours::white.withAlpha (0.55f), 0.0f, glass.getY(),
+                                                 juce::Colours::white.withAlpha (0.0f), 0.0f, glass.getBottom(), false));
+        g.fillRect (glass);
+    }
 
     // Frequency grid.
     g.setFont (fonts::sans (9.0f, 0.12f));
@@ -161,9 +171,9 @@ void SpectrumDisplay::paint (juce::Graphics& g)
     veil.closeSubPath();
 
     const float fullDepth = yForCut (maxVeilDb);
-    juce::ColourGradient silk (champagneLight.withAlpha (0.35f), 0.0f, plot.getY(),
-                               terracotta.withAlpha (0.72f), 0.0f, fullDepth, false);
-    silk.addColour (0.3, champagne.withAlpha (0.55f));
+    juce::ColourGradient silk (cobaltLight.withAlpha (0.28f), 0.0f, plot.getY(),
+                               cobaltDeep.withAlpha (0.72f), 0.0f, fullDepth, false);
+    silk.addColour (0.35, cobalt.withAlpha (0.5f));
     g.setGradientFill (silk);
     g.fillPath (veil);
 
@@ -171,25 +181,25 @@ void SpectrumDisplay::paint (juce::Graphics& g)
     // fading away when nothing is being cut.
     const float deepest = *std::max_element (cut.begin(), cut.end());
     const float hemAlpha = juce::jlimit (0.0f, 1.0f, deepest / 2.0f);
-    g.setColour (espresso.withAlpha (0.10f * hemAlpha));
+    g.setColour (navy.withAlpha (0.10f * hemAlpha));
     g.strokePath (veilEdge, juce::PathStrokeType (2.0f, juce::PathStrokeType::curved), juce::AffineTransform::translation (0.0f, 1.6f));
-    g.setColour (terracotta.withAlpha (0.25f + 0.6f * hemAlpha));
+    g.setColour (cobalt.withAlpha (0.25f + 0.7f * hemAlpha));
     g.strokePath (veilEdge, juce::PathStrokeType (1.4f, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
 
-    // Areas outside the focus range are veiled in alabaster.
+    // Areas outside the focus range are veiled in white.
     const float xLow = xForHz (focusLowHz), xHigh = xForHz (focusHighHz);
-    g.setColour (alabaster.withAlpha (0.45f));
+    g.setColour (surface.withAlpha (0.45f));
     g.fillRect (juce::Rectangle<float>::leftTopRightBottom (plot.getX() - 2.0f, plot.getY() - 2.0f, xLow, plot.getBottom() + 2.0f));
     g.fillRect (juce::Rectangle<float>::leftTopRightBottom (xHigh, plot.getY() - 2.0f, plot.getRight() + 2.0f, plot.getBottom() + 2.0f));
 
-    // The protected fundamental: a small champagne mark at the floor.
+    // The protected fundamental: a small cobalt mark at the floor.
     if (pitchAlpha > 0.01f && pitchHz > 0.0f)
     {
         const float x = xForHz (pitchHz);
         juce::Path diamond;
         diamond.addTriangle (x - 4.0f, plot.getBottom() - 6.0f, x + 4.0f, plot.getBottom() - 6.0f, x, plot.getBottom() - 12.0f);
         diamond.addTriangle (x - 4.0f, plot.getBottom() - 6.0f, x + 4.0f, plot.getBottom() - 6.0f, x, plot.getBottom());
-        g.setColour (champagneDeep.withAlpha (0.85f * pitchAlpha));
+        g.setColour (cobaltDeep.withAlpha (0.85f * pitchAlpha));
         g.fillPath (diamond);
         g.setColour (ink (0.55f * pitchAlpha));
         g.setFont (fonts::serifItalic (13.0f));
@@ -200,14 +210,14 @@ void SpectrumDisplay::paint (juce::Graphics& g)
     for (const auto& [handle, x] : { std::pair { Handle::low, xLow }, std::pair { Handle::high, xHigh } })
     {
         const bool active = hovered == handle || dragging == handle;
-        g.setColour (champagneDeep.withAlpha (active ? 0.9f : 0.55f));
+        g.setColour (cobalt.withAlpha (active ? 0.9f : 0.5f));
         g.fillRect (juce::Rectangle<float> (x - 0.5f, plot.getY(), 1.0f, plot.getHeight()));
 
         const auto knob = juce::Rectangle<float> (active ? 11.0f : 9.0f, active ? 11.0f : 9.0f).withCentre ({ x, plot.getY() + 8.0f });
-        g.setGradientFill (juce::ColourGradient (champagneLight, knob.getX(), knob.getY(), champagne, knob.getRight(), knob.getBottom(), false));
+        g.setGradientFill (juce::ColourGradient (juce::Colours::white, knob.getX(), knob.getY(), porcelainShade, knob.getRight(), knob.getBottom(), false));
         g.fillEllipse (knob);
-        g.setColour (champagneDeep);
-        g.drawEllipse (knob, 0.8f);
+        g.setColour (cobalt);
+        g.drawEllipse (knob, 1.4f);
     }
 }
 

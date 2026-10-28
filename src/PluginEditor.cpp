@@ -70,7 +70,7 @@ LinenAudioProcessorEditor::~LinenAudioProcessorEditor()
 
 void LinenAudioProcessorEditor::paint (juce::Graphics& g)
 {
-    g.fillAll (linen::palette::alabaster);
+    g.fillAll (linen::palette::surface);
 }
 
 void LinenAudioProcessorEditor::resized()
@@ -90,12 +90,12 @@ void LinenAudioProcessorEditor::Canvas::PresetBox::paint (juce::Graphics& g)
     using namespace linen::palette;
     const auto r = getLocalBounds().toFloat().reduced (0.5f);
 
-    g.setColour (hovering ? cashmere : cashmere.withAlpha (0.5f));
+    g.setColour (hovering ? porcelain : porcelain.withAlpha (0.75f));
     g.fillRoundedRectangle (r, r.getHeight() * 0.5f);
-    g.setColour (champagneDeep.withAlpha (hovering ? 0.8f : 0.5f));
+    g.setColour (hovering ? cobalt.withAlpha (0.7f) : rim);
     g.drawRoundedRectangle (r, r.getHeight() * 0.5f, 0.8f);
 
-    g.setColour (espresso);
+    g.setColour (navy);
     g.setFont (linen::fonts::serifItalic (17.0f));
     g.drawText (processor.getProgramName (processor.getCurrentProgram()), r, juce::Justification::centred, false);
 
@@ -105,7 +105,7 @@ void LinenAudioProcessorEditor::Canvas::PresetBox::paint (juce::Graphics& g)
     chevron.startNewSubPath (cx - 3.5f, cy - 1.5f);
     chevron.lineTo (cx, cy + 2.0f);
     chevron.lineTo (cx + 3.5f, cy - 1.5f);
-    g.setColour (ink (hovering ? 0.6f : 0.35f));
+    g.setColour (cobalt.withAlpha (hovering ? 0.9f : 0.55f));
     g.strokePath (chevron, juce::PathStrokeType (1.1f, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
 }
 
@@ -149,6 +149,8 @@ LinenAudioProcessorEditor::Canvas::Canvas (LinenAudioProcessor& p)
     attach (silk, id::silk, "Silk: one knob for the whole chain. Up adds drive, De-harsh, compression, Cotton and Air "
                             "together at an even level; down pulls back toward transparent. 50% = your settings as they are");
     silk.setBipolar (true);
+    for (auto* k : { &silk, &drive, &cotton, &depth })
+        k->setFeatured (true);
 
     // Preamp + EQ
     attach (drive, id::preampDrive, "Drive: push the preamp for transformer weight and class-A warmth");
@@ -313,7 +315,7 @@ void LinenAudioProcessorEditor::Canvas::updateDimming (double timestampSeconds)
 
 void LinenAudioProcessorEditor::Canvas::paintSectionTitle (juce::Graphics& g, const juce::String& title, int x, int y, float alpha)
 {
-    g.setColour (linen::palette::espresso.withMultipliedAlpha (alpha));
+    g.setColour (linen::palette::navy.withMultipliedAlpha (alpha));
     g.setFont (linen::fonts::serifMedium (24.0f, 0.01f));
     g.drawText (title, juce::Rectangle<int> (x, y, 220, 28), juce::Justification::centredLeft);
 }
@@ -322,7 +324,7 @@ void LinenAudioProcessorEditor::Canvas::paint (juce::Graphics& g)
 {
     using namespace linen::palette;
 
-    weave.draw (g, getLocalBounds());
+    backdrop.draw (g, getLocalBounds());
     paintHeader (g);
 
     paintSectionTitle (g, "Preamp", margin, rowATitleY, dim);
@@ -340,12 +342,12 @@ void LinenAudioProcessorEditor::Canvas::paint (juce::Graphics& g)
     }
 
     // Quiet rules between the sections.
-    drawVerticalRule (g, (float) rightColumnX - 20.0f, (float) rowATitleY, (float) rowAKnobY + 120.0f, champagne.withAlpha (0.45f));
-    drawVerticalRule (g, (float) rightColumnX - 20.0f, (float) rowBTitleY, (float) rowBKnobY + 120.0f, champagne.withAlpha (0.45f));
-    drawVerticalRule (g, (float) outputX - 14.0f, (float) rowBTitleY, (float) rowBKnobY + 120.0f, champagne.withAlpha (0.45f));
-    drawHairline (g, (float) margin, (float) (getWidth() - margin), (float) rowBTitleY - 16.0f, champagne.withAlpha (0.35f));
+    drawVerticalRule (g, (float) rightColumnX - 20.0f, (float) rowATitleY, (float) rowAKnobY + 120.0f, cobalt.withAlpha (0.22f));
+    drawVerticalRule (g, (float) rightColumnX - 20.0f, (float) rowBTitleY, (float) rowBKnobY + 120.0f, cobalt.withAlpha (0.22f));
+    drawVerticalRule (g, (float) outputX - 14.0f, (float) rowBTitleY, (float) rowBKnobY + 120.0f, cobalt.withAlpha (0.22f));
+    drawHairline (g, (float) margin, (float) (getWidth() - margin), (float) rowBTitleY - 16.0f, cobalt.withAlpha (0.18f));
 
-    drawHairline (g, (float) margin, (float) (getWidth() - margin), (float) getHeight() - 38.0f, champagne.withAlpha (0.45f));
+    drawHairline (g, (float) margin, (float) (getWidth() - margin), (float) getHeight() - 38.0f, cobalt.withAlpha (0.25f));
 
     g.setColour (ink (0.38f));
     g.setFont (linen::fonts::sans (9.5f, 0.22f));
@@ -358,9 +360,20 @@ void LinenAudioProcessorEditor::Canvas::paintHeader (juce::Graphics& g)
 {
     using namespace linen::palette;
 
-    g.setColour (espresso);
-    g.setFont (linen::fonts::serif (50.0f, 0.34f));
+    g.setColour (navy);
+    const auto wordmarkFont = linen::fonts::serif (50.0f, 0.34f);
+    g.setFont (wordmarkFont);
     g.drawText ("LINEN", juce::Rectangle<int> (margin - 2, 22, 340, 54), juce::Justification::centredLeft);
+
+    // The brand dot: a small glossy cobalt bead after the wordmark.
+    {
+        const float x = (float) margin - 2.0f + juce::GlyphArrangement::getStringWidth (wordmarkFont, "LINEN") + 2.0f;
+        const auto bead = juce::Rectangle<float> (8.0f, 8.0f).withCentre ({ x, 60.0f });
+        g.setGradientFill (juce::ColourGradient (cobaltLight, bead.getX(), bead.getY(), cobaltDeep, bead.getRight(), bead.getBottom(), false));
+        g.fillEllipse (bead);
+        g.setColour (juce::Colours::white.withAlpha (0.7f));
+        g.fillEllipse (bead.withSizeKeepingCentre (3.0f, 2.0f).translated (-1.0f, -1.6f));
+    }
 
     g.setColour (ink (0.58f));
     g.setFont (linen::fonts::serifItalic (19.0f, 0.01f));
@@ -371,5 +384,5 @@ void LinenAudioProcessorEditor::Canvas::paintHeader (juce::Graphics& g)
     g.drawText (juce::String (juce::CharPointer_UTF8 ("PREAMP  \xc2\xb7  DE-HARSH  \xc2\xb7  SILK COMP  \xc2\xb7  AIR")),
                 juce::Rectangle<int> (getWidth() / 2 - 200, 70, 400, 16), juce::Justification::centred);
 
-    drawHairline (g, (float) margin, (float) (getWidth() - margin), 100.0f, champagne.withAlpha (0.55f));
+    drawHairline (g, (float) margin, (float) (getWidth() - margin), 100.0f, cobalt.withAlpha (0.35f));
 }

@@ -3,6 +3,8 @@
 #include <juce_audio_processors/juce_audio_processors.h>
 #include <melatonin_blur/melatonin_blur.h>
 
+#include "Palette.h"
+
 namespace linen
 {
 
@@ -37,7 +39,7 @@ private:
     juce::SharedResourcePointer<Typefaces> typefaces;
 };
 
-/** A champagne-metal rotary knob with its own caption and value readout.
+/** A cobalt-metal rotary knob with its own caption and value readout.
     Owns its shadows, since melatonin caches them per object. */
 class LinenKnob final : public juce::Slider
 {
@@ -53,6 +55,9 @@ public:
     /** Bipolar knobs (gains) draw their value arc out from the centre. */
     void setBipolar (bool shouldBeBipolar) { bipolar = shouldBeBipolar; repaint(); }
 
+    /** Featured knobs (the main control of a section) get a cobalt enamel body. */
+    void setFeatured (bool shouldBeFeatured) { featured = shouldBeFeatured; repaint(); }
+
 private:
     juce::Rectangle<float> knobArea() const;
 
@@ -60,17 +65,18 @@ private:
     float diameter;
     bool hovering = false;
     bool bipolar = false;
+    bool featured = false;
 
     melatonin::DropShadow bodyShadow {
-        { juce::Colour (0xff221e1c).withAlpha (0.20f), 14, { 0, 7 } },
-        { juce::Colour (0xff221e1c).withAlpha (0.12f), 3, { 0, 1 } }
+        { linen::palette::navy.withAlpha (0.16f), 14, { 0, 7 } },
+        { linen::palette::navy.withAlpha (0.10f), 3, { 0, 1 } }
     };
     melatonin::InnerShadow wellShadow {
-        { juce::Colour (0xff221e1c).withAlpha (0.14f), 6, { 0, 2 } }
+        { linen::palette::navy.withAlpha (0.10f), 6, { 0, 2 } }
     };
 };
 
-/** A small capsule toggle: hairline outline when off, champagne when on. */
+/** A small capsule toggle: hairline outline when off, cobalt when on. */
 class LinenPill final : public juce::ToggleButton
 {
 public:

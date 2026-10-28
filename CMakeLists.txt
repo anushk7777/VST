@@ -85,7 +85,7 @@ set(LINEN_PLUGIN_SOURCES
     src/PluginProcessor.cpp
     src/PluginEditor.cpp
     src/ui/LinenLookAndFeel.cpp
-    src/ui/LinenWeave.cpp
+    src/ui/Backdrop.cpp
     src/ui/Meters.cpp
     src/ui/SpectrumDisplay.cpp)
 

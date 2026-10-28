@@ -6,7 +6,7 @@ namespace linen
 {
 
 /** A quiet live meter, refreshed on VBlank. Bar: a thin well that fills from
-    the top with terracotta (gain reduction hangs down, like the silk veil).
+    the top with cobalt (gain reduction hangs down, like the silk veil).
     Dot: a small light that glows as the value rises (e.g. sibilance). */
 class LinenMeter final : public juce::Component,
                          public juce::SettableTooltipClient

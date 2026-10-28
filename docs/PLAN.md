@@ -49,7 +49,9 @@ Preamp goes first so De-harsh cleans up any glare its harmonics add.
 8. **AutoAssist ("AI" Listen button)**: analyses 5–10 s of the vocal: long-term spectrum compared with the smooth-vocal target, 2–6 kHz harshness, sibilance and crest factor. It then sets Depth, EQ, comp threshold and Air. Plain DSP, runs locally.
 9. **Neural preamp ("AI" option 2)**: a small GRU model run through RTNeural, as a "Neural" mode of Preamp1073. The training script goes in `training/` (NAM-style input/output WAV pairs). **This is blocked on data:** the owner must supply recordings of a test signal (which I'll provide) played through a real 1073 at a few drive settings. The DSP preamp stays the default until then.
 
-## GUI ("quiet luxury", JUCE 8)
+## GUI (JUCE 8)
+
+**Current look (owner's choice, Oct 2026): glossy white and electric cobalt.** Cool-white backdrop with a soft gloss sheen. Knobs are white porcelain; the main knob of each section (Silk, Drive, Cotton, Depth) is cobalt enamel. Switches use glossy cobalt; the veil is cobalt. The palette lives in `src/ui/Palette.h`. The original champagne/linen spec below is kept for reference.
 - **Palette:**
   - Alabaster `#F6F3EC` base;
   - Cashmere `#EBE4D8` for recessed wells;

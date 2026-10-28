@@ -4,7 +4,7 @@
 
 #include "PluginProcessor.h"
 #include "ui/LinenLookAndFeel.h"
-#include "ui/LinenWeave.h"
+#include "ui/Backdrop.h"
 #include "ui/Meters.h"
 #include "ui/SpectrumDisplay.h"
 
@@ -60,7 +60,7 @@ private:
         std::vector<juce::Component*> dimmable();
 
         LinenAudioProcessor& processor;
-        linen::LinenWeave weave;
+        linen::Backdrop backdrop;
 
         linen::SpectrumDisplay display;
 

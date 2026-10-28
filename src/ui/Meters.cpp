@@ -37,7 +37,7 @@ void LinenMeter::paint (juce::Graphics& g)
     if (style == Style::bar)
     {
         const float radius = r.getWidth() * 0.5f;
-        g.setColour (cashmere);
+        g.setColour (well);
         g.fillRoundedRectangle (r, radius);
         g.setColour (ink (0.12f));
         g.drawRoundedRectangle (r.reduced (0.5f), radius, 0.7f);
@@ -45,23 +45,23 @@ void LinenMeter::paint (juce::Graphics& g)
         if (shown > 0.0f)
         {
             const auto fill = r.reduced (1.5f).withHeight (juce::jmax (r.getWidth() - 3.0f, (r.getHeight() - 3.0f) * shown));
-            g.setGradientFill (juce::ColourGradient (champagne, fill.getX(), fill.getY(),
-                                                     terracotta, fill.getX(), fill.getBottom(), false));
+            g.setGradientFill (juce::ColourGradient (electric, fill.getX(), fill.getY(),
+                                                     cobaltDeep, fill.getX(), fill.getBottom(), false));
             g.fillRoundedRectangle (fill, (fill.getWidth()) * 0.5f);
         }
         return;
     }
 
-    // Dot: hairline ring, filling with a terracotta glow.
+    // Dot: hairline ring, filling with an electric-blue glow.
     const auto dot = r.withSizeKeepingCentre (8.0f, 8.0f);
     if (shown > 0.01f)
     {
-        g.setColour (terracotta.withAlpha (0.25f * shown));
+        g.setColour (electric.withAlpha (0.25f * shown));
         g.fillEllipse (dot.expanded (4.0f * shown));
     }
-    g.setColour (cashmere.interpolatedWith (terracotta, shown));
+    g.setColour (well.interpolatedWith (electric, shown));
     g.fillEllipse (dot);
-    g.setColour (champagneDeep.withAlpha (0.7f));
+    g.setColour (cobaltDeep.withAlpha (0.7f));
     g.drawEllipse (dot, 0.8f);
 }
 

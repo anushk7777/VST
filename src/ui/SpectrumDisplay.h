@@ -3,6 +3,7 @@
 #include <juce_audio_processors/juce_audio_processors.h>
 #include <melatonin_blur/melatonin_blur.h>
 
+#include "Palette.h"
 #include "dsp/ResonanceSuppressor.h"
 
 namespace linen
@@ -51,7 +52,7 @@ private:
     Handle hovered = Handle::none, dragging = Handle::none;
 
     melatonin::InnerShadow wellShadow {
-        { juce::Colour (0xff221e1c).withAlpha (0.16f), 12, { 0, 4 } },
+        { linen::palette::navy.withAlpha (0.10f), 12, { 0, 4 } },
         { juce::Colours::white.withAlpha (0.55f), 2, { 0, -1 } }
     };
 
