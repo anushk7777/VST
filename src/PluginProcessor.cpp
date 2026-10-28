@@ -60,8 +60,14 @@ void LinenAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::
     for (int ch = getMainBusNumInputChannels(); ch < main.getNumChannels(); ++ch)
         main.clear (ch, 0, main.getNumSamples());
 
+    // The sidechain feeds De-harsh's detector when the host routes one in.
+    // (emplace keeps it a non-owning view; assigning would copy the audio.)
+    std::optional<juce::AudioBuffer<float>> sidechain;
+    if (getBusCount (true) > 1 && getBus (true, 1)->isEnabled() && getChannelCountOfBus (true, 1) > 0)
+        sidechain.emplace (getBusBuffer (buffer, true, 1));
+
     engine.setParams (handles.read());
-    engine.process (main);
+    engine.process (main, sidechain ? &*sidechain : nullptr);
 }
 
 juce::AudioProcessorEditor* LinenAudioProcessor::createEditor()

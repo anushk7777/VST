@@ -3,7 +3,12 @@
 
 namespace
 {
+    namespace id = linen::params::id;
+
     constexpr int margin = 32;
+    constexpr int sectionY = 362;
+    constexpr int knobRowY = 402;
+    constexpr int outputSectionX = 652;
 
     void drawHairline (juce::Graphics& g, float x0, float x1, float y, juce::Colour colour)
     {
@@ -13,6 +18,13 @@ namespace
         grad.addColour (0.88, colour);
         g.setGradientFill (grad);
         g.fillRect (juce::Rectangle<float> (x0, y, x1 - x0, 1.0f));
+    }
+
+    juce::RangedAudioParameter& param (LinenAudioProcessor& p, const char* paramId)
+    {
+        auto* parameter = p.state.getParameter (paramId);
+        jassert (parameter != nullptr);
+        return *parameter;
     }
 }
 
@@ -48,48 +60,132 @@ void LinenAudioProcessorEditor::resized()
 
 //==============================================================================
 LinenAudioProcessorEditor::Canvas::Canvas (LinenAudioProcessor& p)
-    : inputAttachment (p.state, linen::params::id::inputGain, input),
-      mixAttachment (p.state, linen::params::id::mix, mix),
-      outputAttachment (p.state, linen::params::id::outputGain, output)
+    : processor (p),
+      display (p.getDeharshDisplay(), param (p, id::deharshFocusLow), param (p, id::deharshFocusHigh)),
+      mode (param (p, id::deharshMode), { "Soft", "Hard" }),
+      vblank (this, [this] (double t) { updateDimming (t); })
 {
-    const std::pair<linen::LinenKnob*, const char*> knobs[] {
-        { &input, linen::params::id::inputGain },
-        { &mix, linen::params::id::mix },
-        { &output, linen::params::id::outputGain },
-    };
+    addAndMakeVisible (display);
+    addAndMakeVisible (mode);
+    mode.setTooltip ("Soft: transparent, adapts to the voice's natural tone. Hard: firmer, catches more.");
 
-    for (auto [knob, paramId] : knobs)
-    {
-        if (auto* param = p.state.getParameter (paramId))
-            knob->setDoubleClickReturnValue (true, param->convertFrom0to1 (param->getDefaultValue()));
+    attach (glare, id::deharshGlare, "Glare focus: lean on the 2.5-5.5 kHz region where harshness hurts most");
+    attach (body, id::deharshBody, "Body protect: never cut the sung fundamental, so the voice keeps its weight");
+    attach (delta, id::deharshDelta, "Delta: hear only what De-harsh is removing");
+    attach (sidechain, id::deharshSidechain, "Sidechain: listen to the sidechain input instead of the vocal");
 
-        addAndMakeVisible (*knob);
-    }
+    attach (depth, id::deharshDepth, "Depth: how much of each harsh resonance is removed");
+    attach (detail, id::deharshDetail, "Detail: low = broad, gentle cuts; high = narrow, picky cuts");
+    attach (attack, id::deharshAttack, "Attack: how fast cuts close in");
+    attach (release, id::deharshRelease, "Release: how slowly cuts let go");
+    attach (maxCut, id::deharshMaxCut, "Max cut: the deepest any single frequency can be cut");
+
+    attach (input, id::inputGain, "Input gain");
+    attach (mix, id::mix, "Mix: blend the processed vocal with the untouched one (latency-matched)");
+    attach (output, id::outputGain, "Output gain");
 
     input.setBipolar (true);
     output.setBipolar (true);
 }
 
+void LinenAudioProcessorEditor::Canvas::attach (linen::LinenKnob& knob, const char* paramId, const juce::String& tooltip)
+{
+    auto& parameter = param (processor, paramId);
+    sliderAttachments.push_back (std::make_unique<SliderAttachment> (processor.state, paramId, knob));
+    knob.setDoubleClickReturnValue (true, parameter.convertFrom0to1 (parameter.getDefaultValue()));
+    knob.setTooltip (tooltip);
+    addAndMakeVisible (knob);
+}
+
+void LinenAudioProcessorEditor::Canvas::attach (linen::LinenPill& pill, const char* paramId, const juce::String& tooltip)
+{
+    buttonAttachments.push_back (std::make_unique<ButtonAttachment> (processor.state, paramId, pill));
+    pill.setTooltip (tooltip);
+    addAndMakeVisible (pill);
+}
+
 void LinenAudioProcessorEditor::Canvas::resized()
 {
-    displayArea = { margin, 112, designWidth - margin * 2, 300 };
+    display.setBounds (margin, 112, designWidth - margin * 2, 236);
 
-    const int knobW = 110, knobH = 110;
-    const int rowY = displayArea.getBottom() + 44;
-    const int cx = getWidth() / 2;
+    // Section row: De-harsh switches.
+    int x = margin + 112;
+    const int pillY = sectionY + 3, pillH = 22;
+    mode.setBounds (x, pillY, mode.getIdealWidth(), pillH);
+    x = mode.getRight() + 14;
+    for (auto* pill : { &glare, &body, &delta, &sidechain })
+    {
+        pill->setBounds (x, pillY, pill->getIdealWidth(), pillH);
+        x = pill->getRight() + 8;
+    }
 
-    input.setBounds (margin + 20, rowY, knobW, knobH);
-    mix.setBounds (cx - knobW / 2, rowY, knobW, knobH);
-    output.setBounds (getWidth() - margin - 20 - knobW, rowY, knobW, knobH);
+    // Knob rows: big Depth, then the finer controls; Output section on the right.
+    const auto place = [] (linen::LinenKnob& knob, int left, int top, int width)
+    {
+        knob.setBounds (left, top, width, (int) knob.getKnobDiameter() + 34);
+    };
+
+    const int smallTop = knobRowY + 10;
+    place (depth, margin, knobRowY, 104);
+    x = depth.getRight() + 20;
+    for (auto* knob : { &detail, &attack, &release, &maxCut })
+    {
+        place (*knob, x, smallTop, 84);
+        x += 84 + 20;
+    }
+
+    x = outputSectionX;
+    for (auto* knob : { &input, &mix, &output })
+    {
+        place (*knob, x, smallTop, 84);
+        x += 84 + 20;
+    }
+}
+
+void LinenAudioProcessorEditor::Canvas::updateDimming (double timestampSeconds)
+{
+    const float dt = lastTick > 0.0 ? (float) juce::jlimit (0.0, 0.1, timestampSeconds - lastTick) : 0.0f;
+    lastTick = timestampSeconds;
+
+    const float target = delta.getToggleState() ? 0.35f : 1.0f;
+    if (std::abs (target - dim) < 0.002f)
+        return;
+
+    // ~180 ms ease-out.
+    dim += (target - dim) * (1.0f - std::exp (-dt / 0.06f));
+    if (std::abs (target - dim) < 0.002f)
+        dim = target;
+
+    for (auto* c : std::initializer_list<juce::Component*> { &input, &mix, &output })
+        c->setAlpha (dim);
+    repaint (outputSectionX - 20, sectionY - 4, getWidth() - outputSectionX, 40);
 }
 
 void LinenAudioProcessorEditor::Canvas::paint (juce::Graphics& g)
 {
+    using namespace linen::palette;
+
     weave.draw (g, getLocalBounds());
     paintHeader (g);
-    paintDisplayWell (g);
 
-    using namespace linen::palette;
+    // Section titles.
+    g.setColour (espresso);
+    g.setFont (linen::fonts::serifMedium (24.0f, 0.01f));
+    g.drawText ("De-harsh", juce::Rectangle<int> (margin, sectionY, 110, 28), juce::Justification::centredLeft);
+
+    g.setColour (espresso.withMultipliedAlpha (dim));
+    g.drawText ("Output", juce::Rectangle<int> (outputSectionX + 6, sectionY, 120, 28), juce::Justification::centredLeft);
+
+    // A quiet vertical rule between the sections.
+    {
+        const float x = (float) outputSectionX - 22.0f;
+        juce::ColourGradient grad (champagne.withAlpha (0.0f), x, (float) sectionY, champagne.withAlpha (0.0f), x, (float) sectionY + 150.0f, false);
+        grad.addColour (0.2, champagne.withAlpha (0.45f));
+        grad.addColour (0.8, champagne.withAlpha (0.45f));
+        g.setGradientFill (grad);
+        g.fillRect (juce::Rectangle<float> (x, (float) sectionY, 1.0f, 150.0f));
+    }
+
     drawHairline (g, (float) margin, (float) (getWidth() - margin), (float) getHeight() - 38.0f, champagne.withAlpha (0.45f));
 
     g.setColour (ink (0.38f));
@@ -117,40 +213,4 @@ void LinenAudioProcessorEditor::Canvas::paintHeader (juce::Graphics& g)
                 juce::Rectangle<int> (getWidth() - margin - 460, 40, 460, 20), juce::Justification::centredRight);
 
     drawHairline (g, (float) margin, (float) (getWidth() - margin), 100.0f, champagne.withAlpha (0.55f));
-}
-
-void LinenAudioProcessorEditor::Canvas::paintDisplayWell (juce::Graphics& g)
-{
-    using namespace linen::palette;
-
-    const auto well = displayArea.toFloat();
-    juce::Path wellPath;
-    wellPath.addRoundedRectangle (well, 14.0f);
-
-    g.setColour (cashmere);
-    g.fillPath (wellPath);
-    displayInner.render (g, wellPath);
-
-    // Log-frequency grid, 20 Hz – 20 kHz.
-    const auto plot = well.reduced (22.0f, 18.0f);
-    const auto xFor = [&] (float hz)
-    {
-        return plot.getX() + plot.getWidth() * std::log (hz / 20.0f) / std::log (1000.0f);
-    };
-
-    g.setFont (linen::fonts::sans (9.0f, 0.12f));
-    for (const float hz : { 50.0f, 100.0f, 200.0f, 500.0f, 1000.0f, 2000.0f, 5000.0f, 10000.0f })
-    {
-        const float x = xFor (hz);
-        g.setColour (ink (0.06f));
-        g.fillRect (juce::Rectangle<float> (x, plot.getY(), 1.0f, plot.getHeight() - 14.0f));
-        g.setColour (ink (0.36f));
-        const auto label = hz >= 1000.0f ? juce::String ((int) (hz / 1000.0f)) + "k" : juce::String ((int) hz);
-        g.drawText (label, juce::Rectangle<float> (x - 20.0f, plot.getBottom() - 10.0f, 40.0f, 12.0f), juce::Justification::centred);
-    }
-
-    g.setColour (ink (0.40f));
-    g.setFont (linen::fonts::serifItalic (17.0f));
-    g.drawText ("the silk veil appears here once De-harsh is woven in",
-                plot.withTrimmedBottom (14.0f), juce::Justification::centred);
 }

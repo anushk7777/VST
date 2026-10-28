@@ -1,6 +1,6 @@
 #pragma once
 
-#include <juce_gui_basics/juce_gui_basics.h>
+#include <juce_audio_processors/juce_audio_processors.h>
 #include <melatonin_blur/melatonin_blur.h>
 
 namespace linen
@@ -68,6 +68,36 @@ private:
     melatonin::InnerShadow wellShadow {
         { juce::Colour (0xff221e1c).withAlpha (0.14f), 6, { 0, 2 } }
     };
+};
+
+/** A small capsule toggle: hairline outline when off, champagne when on. */
+class LinenPill final : public juce::ToggleButton
+{
+public:
+    explicit LinenPill (const juce::String& caption);
+
+    void paintButton (juce::Graphics&, bool highlighted, bool down) override;
+
+    /** Width that fits the caption. */
+    int getIdealWidth() const;
+};
+
+/** Two-way switch (e.g. SOFT | HARD) bound to a two-choice parameter. */
+class LinenSegmented final : public juce::Component,
+                             public juce::SettableTooltipClient
+{
+public:
+    LinenSegmented (juce::RangedAudioParameter& param, juce::StringArray labels);
+
+    void paint (juce::Graphics&) override;
+    void mouseDown (const juce::MouseEvent&) override;
+
+    int getIdealWidth() const;
+
+private:
+    juce::StringArray labels;
+    juce::ParameterAttachment attachment;
+    int selected = 0;
 };
 
 } // namespace linen

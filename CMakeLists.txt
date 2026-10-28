@@ -38,7 +38,9 @@ juce_add_module("${melatonin_blur_SOURCE_DIR}")
 # DSP code has no dependency on the plugin wrapper, so the tests and the render
 # tool compile exactly the same engine the plugin runs.
 set(LINEN_DSP_SOURCES
-    src/dsp/LinenEngine.cpp)
+    src/dsp/LinenEngine.cpp
+    src/dsp/PitchTracker.cpp
+    src/dsp/ResonanceSuppressor.cpp)
 
 juce_add_binary_data(LinenAssets
     NAMESPACE LinenBinary
@@ -73,12 +75,15 @@ juce_add_plugin(Linen
     VST3_CATEGORIES          Fx Dynamics EQ
     COPY_PLUGIN_AFTER_BUILD  FALSE)
 
-target_sources(Linen PRIVATE
+set(LINEN_PLUGIN_SOURCES
     ${LINEN_DSP_SOURCES}
     src/PluginProcessor.cpp
     src/PluginEditor.cpp
     src/ui/LinenLookAndFeel.cpp
-    src/ui/LinenWeave.cpp)
+    src/ui/LinenWeave.cpp
+    src/ui/SpectrumDisplay.cpp)
+
+target_sources(Linen PRIVATE ${LINEN_PLUGIN_SOURCES})
 
 target_include_directories(Linen PRIVATE src)
 target_compile_definitions(Linen PUBLIC ${LINEN_COMMON_DEFINITIONS})
@@ -100,7 +105,8 @@ juce_add_console_app(LinenTests PRODUCT_NAME "LinenTests")
 target_sources(LinenTests PRIVATE
     ${LINEN_DSP_SOURCES}
     tests/TestMain.cpp
-    tests/EngineTests.cpp)
+    tests/EngineTests.cpp
+    tests/DeharshTests.cpp)
 target_include_directories(LinenTests PRIVATE src tests)
 target_compile_definitions(LinenTests PRIVATE ${LINEN_COMMON_DEFINITIONS})
 target_link_libraries(LinenTests
@@ -112,7 +118,7 @@ target_link_libraries(LinenTests
         juce::juce_recommended_warning_flags)
 
 # ---- Offline render tool ----------------------------------------------------
-juce_add_console_app(LinenRender PRODUCT_NAME "linen-render")
+juce_add_console_app(LinenRender PRODUCT_NAME "LinenRender")
 target_sources(LinenRender PRIVATE
     ${LINEN_DSP_SOURCES}
     tools/render.cpp)
@@ -125,6 +131,27 @@ target_link_libraries(LinenRender
     PUBLIC
         juce::juce_recommended_config_flags
         juce::juce_recommended_warning_flags)
+
+# ---- GUI snapshot tool (dev only: renders the window to PNG with audio playing)
+option(LINEN_BUILD_SNAPSHOT "Build the LinenSnapshot GUI screenshot tool" OFF)
+if (LINEN_BUILD_SNAPSHOT)
+    juce_add_gui_app(LinenSnapshot PRODUCT_NAME "LinenSnapshot")
+    target_sources(LinenSnapshot PRIVATE ${LINEN_PLUGIN_SOURCES} tools/snapshot.cpp)
+    target_include_directories(LinenSnapshot PRIVATE src)
+    target_compile_definitions(LinenSnapshot PRIVATE ${LINEN_COMMON_DEFINITIONS}
+        JucePlugin_Name="Linen" JucePlugin_VersionString="${PROJECT_VERSION}")
+    target_link_libraries(LinenSnapshot
+        PRIVATE
+            LinenAssets
+            melatonin_blur
+            juce::juce_audio_utils
+            juce::juce_audio_formats
+            juce::juce_dsp
+            juce::juce_animation
+        PUBLIC
+            juce::juce_recommended_config_flags
+            juce::juce_recommended_warning_flags)
+endif()
 
 enable_testing()
 add_test(NAME LinenTests COMMAND LinenTests)

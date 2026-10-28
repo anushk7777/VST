@@ -19,4 +19,6 @@ cmake --build build
 ./build/LinenTests_artefacts/Release/LinenTests
 ```
 
-To see the window without a screen: run `build/Linen_artefacts/Release/Standalone/Linen` under `Xvfb` and capture it with `import -window root shot.png`.
+To see the window without a screen, configure with `-DLINEN_BUILD_SNAPSHOT=ON` and run under Xvfb:
+`DISPLAY=:99 build/LinenSnapshot_artefacts/Release/LinenSnapshot shot.png [vocal.wav] --scale 1 --param deharsh_depth=8`.
+It plays a synthetic (or given) vocal through the real processor at real-time pace, so the display animates as in a host.

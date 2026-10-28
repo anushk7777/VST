@@ -201,4 +201,103 @@ void LinenKnob::paint (juce::Graphics& g)
     g.drawText (text, textArea.removeFromTop (16.0f), juce::Justification::centred, false);
 }
 
+//==============================================================================
+namespace
+{
+    juce::Font pillFont() { return fonts::sansMedium (9.5f, 0.18f); }
+
+    float textWidth (const juce::String& text)
+    {
+        return juce::GlyphArrangement::getStringWidth (pillFont(), text);
+    }
+}
+
+LinenPill::LinenPill (const juce::String& caption)
+    : juce::ToggleButton (caption)
+{
+    setClickingTogglesState (true);
+}
+
+int LinenPill::getIdealWidth() const
+{
+    return (int) std::ceil (textWidth (getButtonText().toUpperCase())) + 26;
+}
+
+void LinenPill::paintButton (juce::Graphics& g, bool highlighted, bool)
+{
+    using namespace palette;
+
+    const auto r = getLocalBounds().toFloat().reduced (0.5f);
+    const float radius = r.getHeight() * 0.5f;
+    const bool on = getToggleState();
+
+    if (on)
+    {
+        g.setGradientFill (juce::ColourGradient (champagneLight, r.getX(), r.getY(), champagne, r.getX(), r.getBottom(), false));
+        g.fillRoundedRectangle (r, radius);
+        g.setColour (champagneDeep.withAlpha (0.8f));
+        g.drawRoundedRectangle (r, radius, 0.8f);
+    }
+    else
+    {
+        g.setColour (highlighted ? cashmere : cashmere.withAlpha (0.0f));
+        g.fillRoundedRectangle (r, radius);
+        g.setColour (champagneDeep.withAlpha (highlighted ? 0.75f : 0.45f));
+        g.drawRoundedRectangle (r, radius, 0.8f);
+    }
+
+    g.setColour (on ? espresso : ink (highlighted ? 0.75f : 0.55f));
+    g.setFont (pillFont());
+    g.drawText (getButtonText().toUpperCase(), getLocalBounds(), juce::Justification::centred, false);
+}
+
+LinenSegmented::LinenSegmented (juce::RangedAudioParameter& param, juce::StringArray labelsToShow)
+    : labels (std::move (labelsToShow)),
+      attachment (param, [this] (float v) { selected = juce::roundToInt (v); repaint(); })
+{
+    attachment.sendInitialUpdate();
+}
+
+int LinenSegmented::getIdealWidth() const
+{
+    float w = 0.0f;
+    for (const auto& l : labels)
+        w += textWidth (l.toUpperCase()) + 24.0f;
+    return (int) std::ceil (w);
+}
+
+void LinenSegmented::paint (juce::Graphics& g)
+{
+    using namespace palette;
+
+    const auto r = getLocalBounds().toFloat().reduced (0.5f);
+    const float radius = r.getHeight() * 0.5f;
+    const float segment = r.getWidth() / (float) labels.size();
+
+    g.setColour (champagneDeep.withAlpha (0.45f));
+    g.drawRoundedRectangle (r, radius, 0.8f);
+
+    for (int i = 0; i < labels.size(); ++i)
+    {
+        auto seg = r.withX (r.getX() + segment * (float) i).withWidth (segment);
+
+        if (i == selected)
+        {
+            g.setGradientFill (juce::ColourGradient (champagneLight, seg.getX(), seg.getY(), champagne, seg.getX(), seg.getBottom(), false));
+            g.fillRoundedRectangle (seg.reduced (1.5f), (seg.getHeight() - 3.0f) * 0.5f);
+        }
+
+        g.setColour (i == selected ? espresso : ink (0.5f));
+        g.setFont (pillFont());
+        g.drawText (labels[i].toUpperCase(), seg, juce::Justification::centred, false);
+    }
+}
+
+void LinenSegmented::mouseDown (const juce::MouseEvent& e)
+{
+    const int index = juce::jlimit (0, labels.size() - 1, (int) (e.position.x / ((float) getWidth() / (float) labels.size())));
+    if (index != selected)
+        attachment.setValueAsCompleteGesture ((float) index);
+}
+
 } // namespace linen

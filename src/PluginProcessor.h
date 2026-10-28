@@ -37,6 +37,9 @@ public:
 
     juce::AudioProcessorValueTreeState state;
 
+    /** De-harsh analysis for the spectrum display (read on the message thread). */
+    linen::DeharshDisplay& getDeharshDisplay() noexcept { return engine.getDeharshDisplay(); }
+
 private:
     linen::params::Handles handles;
     linen::Engine engine;
