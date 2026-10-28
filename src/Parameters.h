@@ -35,6 +35,16 @@ namespace id
     inline constexpr auto deharshBody      = "deharsh_body";
     inline constexpr auto deharshDelta     = "deharsh_delta";
     inline constexpr auto deharshSidechain = "deharsh_sidechain";
+
+    inline constexpr auto compThreshold = "comp_threshold";
+    inline constexpr auto compRatio     = "comp_ratio";
+    inline constexpr auto compAttack    = "comp_attack";
+    inline constexpr auto compRelease   = "comp_release";
+    inline constexpr auto compMakeup    = "comp_makeup";
+    inline constexpr auto compMix       = "comp_mix";
+
+    inline constexpr auto airAmount = "air_amount";
+    inline constexpr auto airDeEss  = "air_deess";
 }
 
 inline constexpr int version = 1;
@@ -153,6 +163,30 @@ inline juce::AudioProcessorValueTreeState::ParameterLayout createLayout()
     layout.add (std::make_unique<Bool> (juce::ParameterID { id::deharshDelta, version }, "De-harsh Delta", false));
     layout.add (std::make_unique<Bool> (juce::ParameterID { id::deharshSidechain, version }, "De-harsh Sidechain", false));
 
+    // Silk compressor
+    layout.add (std::make_unique<Float> (juce::ParameterID { id::compThreshold, version }, "Comp Threshold",
+                                         juce::NormalisableRange<float> (-48.0f, 0.0f, 0.1f), -18.0f,
+                                         Attributes().withLabel ("dB").withStringFromValueFunction (formatDb)));
+    layout.add (std::make_unique<Float> (juce::ParameterID { id::compRatio, version }, "Comp Ratio",
+                                         centredRange (1.0f, 6.0f, 2.5f, 0.01f), 2.0f,
+                                         Attributes().withStringFromValueFunction ([] (float v, int)
+                                                                                   { return juce::String (v, 1) + ":1"; })));
+    layout.add (std::make_unique<Float> (juce::ParameterID { id::compAttack, version }, "Comp Attack",
+                                         centredRange (1.0f, 80.0f, 12.0f, 0.01f), 12.0f,
+                                         Attributes().withLabel ("ms").withStringFromValueFunction (formatMs)));
+    layout.add (std::make_unique<Float> (juce::ParameterID { id::compRelease, version }, "Comp Release",
+                                         centredRange (30.0f, 600.0f, 140.0f, 0.1f), 120.0f,
+                                         Attributes().withLabel ("ms").withStringFromValueFunction (formatMs)));
+    layout.add (std::make_unique<Bool> (juce::ParameterID { id::compMakeup, version }, "Comp Auto Makeup", true));
+    layout.add (std::make_unique<Float> (juce::ParameterID { id::compMix, version }, "Comp Mix",
+                                         juce::NormalisableRange<float> (0.0f, 1.0f, 0.001f), 1.0f, percentAttributes));
+
+    // Air
+    layout.add (std::make_unique<Float> (juce::ParameterID { id::airAmount, version }, "Air",
+                                         juce::NormalisableRange<float> (0.0f, 1.0f, 0.001f), 0.3f, percentAttributes));
+    layout.add (std::make_unique<Float> (juce::ParameterID { id::airDeEss, version }, "Air De-ess",
+                                         juce::NormalisableRange<float> (0.0f, 1.0f, 0.001f), 0.5f, percentAttributes));
+
     return layout;
 }
 
@@ -181,7 +215,15 @@ struct Handles
           deharshGlare     (*state.getRawParameterValue (id::deharshGlare)),
           deharshBody      (*state.getRawParameterValue (id::deharshBody)),
           deharshDelta     (*state.getRawParameterValue (id::deharshDelta)),
-          deharshSidechain (*state.getRawParameterValue (id::deharshSidechain))
+          deharshSidechain (*state.getRawParameterValue (id::deharshSidechain)),
+          compThreshold    (*state.getRawParameterValue (id::compThreshold)),
+          compRatio        (*state.getRawParameterValue (id::compRatio)),
+          compAttack       (*state.getRawParameterValue (id::compAttack)),
+          compRelease      (*state.getRawParameterValue (id::compRelease)),
+          compMakeup       (*state.getRawParameterValue (id::compMakeup)),
+          compMix          (*state.getRawParameterValue (id::compMix)),
+          airAmount        (*state.getRawParameterValue (id::airAmount)),
+          airDeEss         (*state.getRawParameterValue (id::airDeEss))
     {
     }
 
@@ -213,6 +255,16 @@ struct Handles
         d.bodyProtect = deharshBody.load() > 0.5f;
         d.delta       = deharshDelta.load() > 0.5f;
         p.deharshSidechain = deharshSidechain.load() > 0.5f;
+
+        p.comp.thresholdDb = compThreshold.load();
+        p.comp.ratio       = compRatio.load();
+        p.comp.attackMs    = compAttack.load();
+        p.comp.releaseMs   = compRelease.load();
+        p.comp.autoMakeup  = compMakeup.load() > 0.5f;
+        p.comp.mix         = compMix.load();
+
+        p.air.amount = airAmount.load();
+        p.air.deEss  = airDeEss.load();
         return p;
     }
 
@@ -238,6 +290,14 @@ struct Handles
     std::atomic<float>& deharshBody;
     std::atomic<float>& deharshDelta;
     std::atomic<float>& deharshSidechain;
+    std::atomic<float>& compThreshold;
+    std::atomic<float>& compRatio;
+    std::atomic<float>& compAttack;
+    std::atomic<float>& compRelease;
+    std::atomic<float>& compMakeup;
+    std::atomic<float>& compMix;
+    std::atomic<float>& airAmount;
+    std::atomic<float>& airDeEss;
 };
 
 } // namespace linen::params

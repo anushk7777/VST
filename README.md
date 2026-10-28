@@ -20,8 +20,8 @@ The full plan and the status of each phase are in [docs/PLAN.md](docs/PLAN.md).
 | 1 | Scaffold, CI, Input/Mix/Output, latency-matched dry path, the Linen look | done |
 | 2 | De-harsh (resonance suppressor) and its spectrum display | done |
 | 3 | 1073-style preamp and EQ | done |
-| 4 | Silk compressor and Air | next |
-| 5 | Silk macro, presets, GUI polish | planned |
+| 4 | Silk compressor and Air | done |
+| 5 | Silk macro, presets, GUI polish | next |
 | 6 | Auto-assist "Listen" button | planned |
 | 7 | Neural preamp (needs real 1073 recordings) | planned |
 
@@ -48,6 +48,20 @@ The preamp is modelled on the behaviour of a classic 1073-style class-A channel:
 | **High 12k** | High shelf at 12 kHz, ±16 dB, for air and sheen. |
 
 Click a frequency selector for its list, or scroll/drag over it to step.
+
+## Using Silk comp and Air
+
+**Silk comp** is built to be felt, not heard. It uses RMS detection, a wide 10 dB soft knee and a 100 Hz sidechain high-pass, so plosives and boom don't pump it. Its release behaves like an optical compressor: after a short peak it lets go quickly, and on long held phrases it slows down by itself toward about 1.5 s.
+
+| Control | What it does |
+|---|---|
+| **Threshold / Ratio** | Where it starts and how firmly it holds. A ratio of 1.5–2.5 is invisible; 4 and above is firm. |
+| **Attack** | Slower attack lets consonants through for a natural edge. |
+| **Release** | The fast part of the release. The slow part adds itself on long phrases. |
+| **Blend** | Parallel compression: mix in the uncompressed voice. |
+| **Auto gain** | Makes up for the typical gain reduction. |
+
+**Air** opens a 10 kHz shelf with a little extra lift on quiet breaths, and adds a soft even-harmonic sparkle (run at 2× oversampling so it never aliases). A sibilance detector compares the top band with the vowel band. When an S or T makes the top outweigh the vowel, Air closes, and **De-ess** turns it into a gentle cut. The small light next to "Air" glows on every S.
 
 ## Using De-harsh
 

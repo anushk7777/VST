@@ -21,6 +21,8 @@ void Engine::prepare (double newSampleRate, int maxBlockSize, int numChannels)
     preamp.prepare (sampleRate, maxBlock, numChans);
     eq.prepare (sampleRate, numChans);
     deharsh.prepare (sampleRate, numChans);
+    comp.prepare (sampleRate, maxBlock, numChans);
+    air.prepare (sampleRate, maxBlock, numChans);
     detector.assign ((size_t) maxBlock, 0.0f);
 
     dryDelay.prepare (spec);
@@ -40,6 +42,8 @@ void Engine::reset()
     preamp.reset();
     eq.reset();
     deharsh.reset();
+    comp.reset();
+    air.reset();
     dryDelay.reset();
     testWetDelay.reset();
 
@@ -54,6 +58,8 @@ void Engine::setParams (const EngineParams& newParams)
     preamp.setDrive (params.preampDrive);
     eq.setParams (params.eq);
     deharsh.setParams (params.deharsh);
+    comp.setParams (params.comp);
+    air.setParams (params.air);
 
     inputGain.setTargetValue (juce::Decibels::decibelsToGain (params.inputGainDb));
     outputGain.setTargetValue (juce::Decibels::decibelsToGain (params.outputGainDb));
@@ -141,6 +147,10 @@ void Engine::processChunk (juce::AudioBuffer<float>& buffer, const juce::AudioBu
 
         deharsh.process (wet, detector.data(), ! useSidechain);
     }
+
+    // Glue, then air on top of the levelled voice.
+    comp.process (wet);
+    air.process (wet);
 
     if (testWetLatency > 0)
     {

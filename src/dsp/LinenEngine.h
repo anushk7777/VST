@@ -2,9 +2,11 @@
 
 #include <juce_dsp/juce_dsp.h>
 
+#include "Air.h"
 #include "Eq1073.h"
 #include "Preamp.h"
 #include "ResonanceSuppressor.h"
+#include "SilkCompressor.h"
 
 namespace linen
 {
@@ -22,11 +24,14 @@ struct EngineParams
 
     DeharshParams deharsh;
     bool deharshSidechain = false;  // detect from the sidechain input instead of the vocal
+
+    CompParams comp;
+    AirParams air;
 };
 
 /** The whole Linen signal chain, independent of the plugin wrapper.
 
-    Input gain → Preamp → EQ → De-harsh → [Comp → Air] → Output gain → Mix
+    Input gain → Preamp → EQ → De-harsh → Silk comp → Air → Output gain → Mix
 
     The dry signal for Mix is taken before the input gain and delayed by the
     chain's latency, so dry and wet stay sample-aligned at any Mix setting. */
@@ -47,6 +52,8 @@ public:
     int getLatencySamples() const noexcept { return latencySamples; }
 
     DeharshDisplay& getDeharshDisplay() noexcept { return deharsh.getDisplay(); }
+    float getCompReductionDb() const noexcept { return comp.getGainReductionDb(); }
+    float getSibilance() const noexcept { return air.getSibilance(); }
 
     /** Adds a pure delay to the wet path. Only for tests: it stands in for
         a latent module so the dry-path compensation can be checked. */
@@ -69,6 +76,8 @@ private:
     Eq1073 eq;
     ResonanceSuppressor deharsh;
     std::vector<float> detector;
+    SilkCompressor comp;
+    Air air;
 
     juce::dsp::DelayLine<float, juce::dsp::DelayLineInterpolationTypes::None> dryDelay;
     juce::AudioBuffer<float> dryBuffer;

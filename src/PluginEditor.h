@@ -5,6 +5,7 @@
 #include "PluginProcessor.h"
 #include "ui/LinenLookAndFeel.h"
 #include "ui/LinenWeave.h"
+#include "ui/Meters.h"
 #include "ui/SpectrumDisplay.h"
 
 /** Everything is laid out once on a fixed design canvas and scaled as a whole,
@@ -12,8 +13,8 @@
 class LinenAudioProcessorEditor final : public juce::AudioProcessorEditor
 {
 public:
-    static constexpr int designWidth = 980;
-    static constexpr int designHeight = 720;
+    static constexpr int designWidth = 1040;
+    static constexpr int designHeight = 740;
 
     explicit LinenAudioProcessorEditor (LinenAudioProcessor&);
     ~LinenAudioProcessorEditor() override;
@@ -40,6 +41,7 @@ private:
         void paintHeader (juce::Graphics&);
         void paintSectionTitle (juce::Graphics&, const juce::String& title, int x, int y, float alpha);
         void updateDimming (double timestampSeconds);
+        std::vector<juce::Component*> dimmable();
 
         LinenAudioProcessor& processor;
         linen::LinenWeave weave;
@@ -47,18 +49,28 @@ private:
         linen::SpectrumDisplay display;
 
         // Preamp + 1073-style EQ
-        linen::LinenKnob drive { "Drive", 78.0f };
-        linen::LinenKnob lowGain { "Low", 54.0f }, midGain { "Mid", 54.0f }, highGain { "High 12k", 54.0f };
+        linen::LinenKnob drive { "Drive", 74.0f };
+        linen::LinenKnob lowGain { "Low", 52.0f }, midGain { "Mid", 52.0f }, highGain { "High 12k", 52.0f };
         linen::LinenStepper highPass, lowFreq, midFreq;
+
+        // Silk compressor
+        linen::LinenKnob threshold { "Threshold", 52.0f }, ratio { "Ratio", 52.0f }, compAttack { "Attack", 52.0f },
+                         compRelease { "Release", 52.0f }, compMix { "Blend", 52.0f };
+        linen::LinenPill makeup { "Auto gain" };
+        linen::LinenMeter compMeter;
 
         // De-harsh
         linen::LinenSegmented mode;
         linen::LinenPill glare { "Glare" }, body { "Body" }, delta { "Delta" }, sidechain { "Sidechain" };
-        linen::LinenKnob depth { "Depth", 78.0f }, detail { "Detail", 58.0f }, attack { "Attack", 58.0f },
-                         release { "Release", 58.0f }, maxCut { "Max cut", 58.0f };
+        linen::LinenKnob depth { "Depth", 74.0f }, detail { "Detail", 52.0f }, attack { "Attack", 52.0f },
+                         release { "Release", 52.0f }, maxCut { "Max cut", 52.0f };
+
+        // Air
+        linen::LinenKnob air { "Air", 52.0f }, deEss { "De-ess", 52.0f };
+        linen::LinenMeter sibilanceLight;
 
         // Output
-        linen::LinenKnob input { "Input", 58.0f }, mix { "Mix", 58.0f }, output { "Output", 58.0f };
+        linen::LinenKnob input { "Input", 52.0f }, mix { "Mix", 52.0f }, output { "Output", 52.0f };
 
         std::vector<std::unique_ptr<SliderAttachment>> sliderAttachments;
         std::vector<std::unique_ptr<ButtonAttachment>> buttonAttachments;

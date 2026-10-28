@@ -40,6 +40,10 @@ public:
     /** De-harsh analysis for the spectrum display (read on the message thread). */
     linen::DeharshDisplay& getDeharshDisplay() noexcept { return engine.getDeharshDisplay(); }
 
+    /** Live meters for the GUI. */
+    float getCompReductionDb() const noexcept { return engine.getCompReductionDb(); }
+    float getSibilance() const noexcept { return engine.getSibilance(); }
+
 private:
     linen::params::Handles handles;
     linen::Engine engine;
