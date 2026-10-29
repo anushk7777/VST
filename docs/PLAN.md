@@ -124,3 +124,25 @@ Each phase is pushed with a Windows build artifact for the owner to try in FL St
 ## Notes
 - Pushing needs `add_repo` with push access to `anushk7777/VST`. The repo is empty, so the first push creates `main`.
 - The container builds the headless DSP tests on Linux; Windows binaries come from GitHub Actions.
+
+## 0.4 (planned): the signature sound
+
+Goal: a voice through Linen sounds like Linen and nothing else. No plugin can be
+made impossible to imitate, so the signature comes from interactions that are
+easy to hear and very hard to reverse-engineer: several stages that listen to
+each other, all inside the clean budgets (non-Pain presets at or below -45 dB THD).
+
+1. **Weave**: program-dependent micro-dynamics. The ADC's OPTO memory also
+   steers a slow (0.5-3 s) blend of the Warmth line stage between two bias
+   points, so the harmonic colour drifts with how long the singer has been
+   pushing. It sits under the threshold of hearing as an effect and reads as "alive".
+2. **Silk loom**: the De-harsh cuts feed the Air exciter, so the air it removes
+   comes back as clean sparkle an octave up, never as fizz.
+3. **Cotton transformer**: a frequency-dependent iron model (more 2nd below
+   200 Hz, almost none above 2 kHz), so the low-mids round off while the top stays glassy.
+4. **Breath gate in the ADC**: the OPTO ignores breaths and consonants (spectral
+   tilt detector), so the phrase gets levelled and the breaths stay intimate.
+5. Silk macro drives all four together on its own curves.
+
+Every stage keeps the rules: exact when off, latency reported, a measurable
+test each, LinenCheck budgets re-measured.
