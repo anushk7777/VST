@@ -2,6 +2,8 @@
 //
 //   LinenCheck <path/to/Linen.vst3> [--plot null.png] [--wav vocal.wav]
 //              [--warmth warmth.png [--compare other/Linen.vst3 ...]]
+//   LinenCheck <path/to/Linen.vst3> --render in.wav out.wav [--program "House Silk"] [--set "LINEN=75" ...]
+//              (plays a WAV through the plugin with those settings and writes the result, latency removed)
 //
 // 1. Null (phase) test. A fresh Linen (the Clean preset) plays test audio
 //    (noise, a sung vowel, a full-scale sweep and silence, or the given WAV)
@@ -543,6 +545,68 @@ int main (int argc, char** argv)
     std::cout << "Linen check: " << description.name << " " << description.version << " by " << description.manufacturerName
               << "\n   " << pluginFile.getFullPathName() << "\n" << std::endl;
 
+    // Render mode: one WAV through the plugin, as a DAW would play it.
+    if (const int r = args.indexOf ("--render"); r > 0 && r + 2 < args.size())
+    {
+        const auto inFile = cwd.getChildFile (args[r + 1]), outFile = cwd.getChildFile (args[r + 2]);
+        juce::AudioFormatManager formats;
+        formats.registerBasicFormats();
+        std::unique_ptr<juce::AudioFormatReader> reader (formats.createReaderFor (inFile));
+        if (reader == nullptr)
+        {
+            std::cout << "cannot read " << inFile.getFullPathName() << std::endl;
+            return 2;
+        }
+        const double rate = reader->sampleRate;
+        const int length = (int) reader->lengthInSamples;
+
+        auto plugin = load (description, rate, 2);
+        if (plugin == nullptr)
+            return 2;
+
+        for (int i = 1; i + 1 < args.size(); ++i)
+        {
+            if (args[i] == "--program")
+                choose (*plugin, programNamed (*plugin, args[i + 1]));
+        }
+        for (int i = 1; i + 1 < args.size(); ++i)
+        {
+            if (args[i] != "--set")
+                continue;
+            const auto name = args[i + 1].upToFirstOccurrenceOf ("=", false, false);
+            const auto text = args[i + 1].fromFirstOccurrenceOf ("=", false, false);
+            if (auto* parameter = parameterNamed (*plugin, name))
+                parameter->setValueNotifyingHost (parameter->getValueForText (text));
+            else
+                std::cout << "no parameter named " << name << std::endl;
+        }
+
+        const int latency = plugin->getLatencySamples();
+        juce::AudioBuffer<float> in (2, length + latency);
+        in.clear();
+        reader->read (&in, 0, length, 0, true, true);
+        const auto out = play (*plugin, in);
+
+        juce::AudioBuffer<float> trimmed (2, length);
+        for (int ch = 0; ch < 2; ++ch)
+            trimmed.copyFrom (ch, 0, out, ch, latency, length);
+
+        outFile.deleteFile();
+        juce::WavAudioFormat wavFormat;
+        std::unique_ptr<juce::OutputStream> stream = std::make_unique<juce::FileOutputStream> (outFile);
+        const auto writer = wavFormat.createWriterFor (stream, juce::AudioFormatWriterOptions{}.withSampleRate (rate)
+                                                                                                 .withNumChannels (2)
+                                                                                                 .withBitsPerSample (24));
+        if (writer == nullptr || ! writer->writeFromAudioSampleBuffer (trimmed, 0, length))
+        {
+            std::cout << "cannot write " << outFile.getFullPathName() << std::endl;
+            return 2;
+        }
+        std::cout << "wrote " << outFile.getFullPathName() << " (" << juce::String (length / rate, 1) << " s, latency "
+                  << latency << " samples removed)" << std::endl;
+        return 0;
+    }
+
     Failures failures;
 
     // Optional: the user's own vocal instead of the built-in programme.
@@ -601,8 +665,9 @@ int main (int argc, char** argv)
         const std::pair<const char*, float> settings[] {
             { "Tone Low Shelf Gain", 0.0f }, { "Tone High Shelf Gain", 1.0f }, { "Preamp Drive", 1.0f }, { "EQ Low Gain", 1.0f },
             { "EQ Mid Gain", 0.0f }, { "EQ High Gain (12 kHz)", 1.0f }, { "De-harsh Depth", 1.0f }, { "Dua Wox Tube Ratio", 1.0f },
-            { "Dua Wox Tube Threshold", 0.0f }, { "Dua Wox Opto Peak Reduction", 1.0f }, { "Dua Wox Warmth", 1.0f }, { "Air", 1.0f },
-            { "Air De-ess", 1.0f }, { "Silk", 1.0f },
+            { "Dua Wox Tube Threshold", 0.0f }, { "Dua Wox Opto Peak Reduction", 1.0f }, { "Dua Wox Warmth", 1.0f }, { "High Air", 1.0f },
+            { "Mid Air", 1.0f }, { "Air De-ess", 1.0f }, { "Silk", 1.0f }, { "LINEN", 1.0f },
+            { "De-harsh Key", 0.75f }, { "De-harsh Tune", 1.0f },
             { "Tone On", 0.0f }, { "Preamp On", 0.0f }, { "De-harsh On", 0.0f }, { "Dua Wox On", 0.0f }, { "Air On", 0.0f } };
         bool found = true;
         for (const auto& [name, value] : settings)

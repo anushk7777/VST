@@ -54,6 +54,19 @@ namespace
         return (float) (10.0 * std::log10 (sum / length + 1.0e-30));
     }
 
+    /** A typical tracked vowel: its top falls away fast above 2 kHz (as most
+        vocals do, the dull ones that want air). */
+    juce::AudioBuffer<float> dullVowel (int samples, float levelDb = -14.0f)
+    {
+        auto b = silence (samples);
+        for (int n = 1; 220.0 * n < 16000.0; ++n)
+        {
+            const double hz = 220.0 * n;
+            addSine (b, hz, levelDb - 6.0f * std::log2 ((float) n) - (float) juce::jmax (0.0, 12.0 * std::log2 (hz / 2000.0)), 0, samples);
+        }
+        return b;
+    }
+
     /** A sung vowel with real top end: harmonics of 220 Hz out to 16 kHz. */
     juce::AudioBuffer<float> brightVowel (int samples, float levelDb = -14.0f)
     {
@@ -81,23 +94,54 @@ public:
             expectEquals (maxAbsDifference (in, out), 0.0f);
         }
 
-        beginTest ("Air opens the top of a sung vowel and leaves the body alone");
+        const auto lift = [] (const AirParams& p, const juce::AudioBuffer<float>& in, double lowHz, double highHz)
         {
             Air air;
-            AirParams p;
-            p.amount = 1.0f;
             air.setParams (p);
             air.prepare (sr, block, 1);
-
-            const auto in = brightVowel (48000);
             auto out = in;
             runBlocks (air, out);
+            return bandDb (out, lowHz, highHz, 24000, 24000) - bandDb (in, lowHz, highHz, 24000, 24000);
+        };
 
-            const float top = bandDb (out, 11000, 16000, 24000, 24000) - bandDb (in, 11000, 16000, 24000, 24000);
-            const float body = bandDb (out, 200, 1500, 24000, 24000) - bandDb (in, 200, 1500, 24000, 24000);
-            logMessage ("air: top " + juce::String (top, 2) + " dB, body " + juce::String (body, 2) + " dB");
-            expectGreaterThan (top, 3.0f);
+        beginTest ("High Air opens a dull top by several dB and leaves the body alone");
+        {
+            AirParams p;
+            p.amount = 1.0f;
+            const auto in = dullVowel (48000);
+            const float top = lift (p, in, 11000, 16000), body = lift (p, in, 200, 1500);
+            logMessage ("High Air 100% on a dull vowel: top +" + juce::String (top, 2) + " dB, body " + juce::String (body, 2) + " dB");
+            expectGreaterThan (top, 5.0f);
             expectWithinAbsoluteError (body, 0.0f, 0.3f);
+        }
+
+        beginTest ("A top that is already bright is lifted less (no harshness)");
+        {
+            AirParams p;
+            p.amount = 1.0f;
+            const float dull = lift (p, dullVowel (48000), 11000, 16000), bright = lift (p, brightVowel (48000), 11000, 16000);
+            logMessage ("top lift: dull vowel +" + juce::String (dull, 2) + " dB, bright vowel +" + juce::String (bright, 2) + " dB");
+            expectLessThan (bright, dull - 2.0f);
+        }
+
+        beginTest ("Mid Air opens the upper mids, not the body");
+        {
+            AirParams p;
+            p.mid = 1.0f;
+            const auto in = dullVowel (48000);
+            const float presence = lift (p, in, 4000, 7000), body = lift (p, in, 200, 1500);
+            logMessage ("Mid Air 100%: 4-7 kHz +" + juce::String (presence, 2) + " dB, body " + juce::String (body, 2) + " dB");
+            expectGreaterThan (presence, 3.0f);
+            expectWithinAbsoluteError (body, 0.0f, 0.5f);
+        }
+
+        beginTest ("Both work the same at any recording level");
+        {
+            AirParams p;
+            p.amount = 1.0f;
+            const float normal = lift (p, dullVowel (48000, -14.0f), 11000, 16000), quiet = lift (p, dullVowel (48000, -30.0f), 11000, 16000);
+            logMessage ("top lift at -14 dB +" + juce::String (normal, 2) + ", at -30 dB +" + juce::String (quiet, 2));
+            expectWithinAbsoluteError (quiet, normal, 0.5f);
         }
 
         beginTest ("On an S the air closes and turns into a cut; on the vowel it opens");
@@ -111,7 +155,7 @@ public:
 
             // 0.6 s vowel, then 0.4 s of 'S' (loud 5-12 kHz noise over a faint vowel).
             const int vowelEnd = 28800, total = 48000;
-            auto in = brightVowel (total);
+            auto in = dullVowel (total);
             in.applyGain (vowelEnd, total - vowelEnd, 0.1f);
             {
                 auto hiss = whiteNoise (1, total, 0.5f, 11);
@@ -136,7 +180,7 @@ public:
             expectLessThan (sTop, -1.5f, "S is softened, not brightened");
         }
 
-        beginTest ("The exciter's sparkle does not alias");
+        beginTest ("Air adds no grit: no aliasing or modulation spurs");
         {
             Air air;
             AirParams p;
@@ -178,7 +222,7 @@ public:
             expectLessThan (spur, -80.0);
         }
 
-        beginTest ("The sparkle stays above 9 kHz: no intermodulation grit down in the voice");
+        beginTest ("No intermodulation grit down in the voice");
         {
             Air air;
             AirParams p;
@@ -197,12 +241,11 @@ public:
 
             const double partial = toneDb (out, 6300.0);
             const double difference = toneDb (out, 800.0) - partial;
-            const double sparkle = toneDb (out, 13400.0) - partial;
-            logMessage ("800 Hz difference tone " + juce::String (difference, 1) + " dB, 13.4 kHz sparkle "
-                        + juce::String (sparkle, 1) + " dB, re the 6.3 kHz partial");
+            const double sum = toneDb (out, 13400.0) - partial;
+            logMessage ("800 Hz difference tone " + juce::String (difference, 1) + " dB, 13.4 kHz sum tone "
+                        + juce::String (sum, 1) + " dB, re the 6.3 kHz partial");
             expectLessThan (difference, -80.0, "no grit in the voice band");
-            expectLessThan (sparkle, -20.0, "sparkle is gentle");
-            expectGreaterThan (sparkle, -60.0, "...but there");
+            expectLessThan (sum, -80.0, "no sum tones either: the air is a level change, not a distortion");
         }
     }
 };
@@ -234,12 +277,12 @@ public:
             return runInBlocks (engine, stereo, block);
         };
 
-        beginTest ("Where De-harsh cuts, the loom gives the top back as sparkle");
+        beginTest ("Where De-harsh cuts, the loom opens High Air further");
         {
             const auto woven = render (10.0f, 1.0f), plain = render (10.0f, 0.0f);
             const float gain = bandDb (woven, 12000, 16000, 48000, 48000) - bandDb (plain, 12000, 16000, 48000, 48000);
             const float body = bandDb (woven, 200, 1500, 48000, 48000) - bandDb (plain, 200, 1500, 48000, 48000);
-            logMessage ("sparkle above 12 kHz +" + juce::String (gain, 2) + " dB, body " + juce::String (body, 3) + " dB");
+            logMessage ("air above 12 kHz +" + juce::String (gain, 2) + " dB, body " + juce::String (body, 3) + " dB");
             expectGreaterThan (gain, 0.3f);
             expectWithinAbsoluteError (body, 0.0f, 0.05f);
         }

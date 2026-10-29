@@ -1,4 +1,5 @@
 #include "LinenEngine.h"
+#include "HeroMacro.h"
 #include "SilkMacro.h"
 
 namespace linen
@@ -60,6 +61,7 @@ void Engine::prepare (double newSampleRate, int maxBlockSize, int numChannels)
 
     inputGain.reset (sampleRate, smoothingSeconds);
     outputGain.reset (sampleRate, smoothingSeconds);
+    levelMatch.reset (sampleRate, 0.2);
     mix.reset (sampleRate, smoothingSeconds);
     nullAmount.reset (sampleRate, smoothingSeconds);
 
@@ -84,13 +86,16 @@ void Engine::reset()
 
     inputGain.setCurrentAndTargetValue (juce::Decibels::decibelsToGain (params.inputGainDb));
     outputGain.setCurrentAndTargetValue (juce::Decibels::decibelsToGain (params.outputGainDb));
+    levelMatch.setCurrentAndTargetValue (1.0f);
+    dryPower = wetPower = 0.0;
+    levelPrimed = false;
     mix.setCurrentAndTargetValue (params.deharsh.delta ? 1.0f : params.mix);
     nullAmount.setCurrentAndTargetValue (params.nullTest ? 1.0f : 0.0f);
 }
 
 void Engine::setParams (const EngineParams& newParams)
 {
-    params = withPainCoupling (SilkMacro::apply (newParams, newParams.silk));
+    params = withPainCoupling (SilkMacro::apply (HeroMacro::apply (newParams, newParams.linen), newParams.silk));
 
     // Delta plays what De-harsh removes; with De-harsh switched off there is nothing to play.
     if (! params.sections.deharsh)
@@ -244,11 +249,45 @@ void Engine::processChunk (juce::AudioBuffer<float>& buffer, const juce::AudioBu
         }
     }
 
+    // LINEN's level match: compare the long-term level (about 6 s) of what
+    // the chain made with the untouched voice, and hold them together. Only
+    // while the voice is there, and only while LINEN is up.
+    if (params.linen > 0.0f && channels > 0)
+    {
+        double d = 0.0, w = 0.0;
+        for (int ch = 0; ch < channels; ++ch)
+        {
+            const auto* dry = dryBuffer.getReadPointer (ch);
+            const auto* wetData = buffer.getReadPointer (ch);
+            for (int i = 0; i < numSamples; ++i)
+            {
+                d += (double) dry[i] * dry[i];
+                w += (double) wetData[i] * wetData[i];
+            }
+        }
+        d /= (double) (numSamples * channels);
+        w /= (double) (numSamples * channels);
+        if (d > 1.0e-7)
+        {
+            const double keep = levelPrimed ? std::exp (-(double) numSamples / (6.0 * sampleRate)) : 0.0;
+            dryPower = d + (dryPower - d) * keep;
+            wetPower = w + (wetPower - w) * keep;
+            levelPrimed = true;
+            if (wetPower > 1.0e-12)
+                levelMatch.setTargetValue (juce::jlimit (0.5f, 2.0f, (float) std::sqrt (dryPower / wetPower)));
+        }
+    }
+    else
+    {
+        levelMatch.setTargetValue (1.0f);
+        levelPrimed = false;
+    }
+
     // Output gain, then a linear (phase-coherent) dry/wet blend. The phase
     // test then takes the untouched input back out, sample-aligned.
     for (int i = 0; i < numSamples; ++i)
     {
-        const float g = outputGain.getNextValue();
+        const float g = outputGain.getNextValue() * levelMatch.getNextValue();
         const float m = mix.getNextValue();
         const float nulling = nullAmount.getNextValue();
 

@@ -48,6 +48,9 @@ namespace id
     inline constexpr auto deharshMode      = "deharsh_mode";
     inline constexpr auto deharshGlare     = "deharsh_glare";
     inline constexpr auto deharshBody      = "deharsh_body";
+    inline constexpr auto deharshKey       = "deharsh_key";
+    inline constexpr auto deharshScale     = "deharsh_scale";
+    inline constexpr auto deharshTune      = "deharsh_tune";
     inline constexpr auto deharshDelta     = "deharsh_delta";
     inline constexpr auto deharshSidechain = "deharsh_sidechain";
 
@@ -67,11 +70,15 @@ namespace id
     inline constexpr auto airOn     = "air_on";
     inline constexpr auto airAmount = "air_amount";
     inline constexpr auto airDeEss  = "air_deess";
+    inline constexpr auto airMid    = "air_mid";
+
+    inline constexpr auto linen     = "linen";   // the hero knob
 }
 
 inline constexpr int version = 1;      // parameters since 0.1
 inline constexpr int version2 = 2;     // added in 0.2: Tone, power switches, Null
 inline constexpr int version3 = 3;     // added in 0.3: the Dua Wox compressor's slots
+inline constexpr int version4 = 4;     // added in 0.5: LINEN, Mid Air, Key mode
 
 inline juce::String formatDb (float value, int)
 {
@@ -116,6 +123,12 @@ inline juce::AudioProcessorValueTreeState::ParameterLayout createLayout()
     layout.add (std::make_unique<Float> (juce::ParameterID { id::outputGain, version }, "Output",
                                          juce::NormalisableRange<float> (-24.0f, 24.0f, 0.1f), 0.0f,
                                          Attributes().withLabel ("dB").withStringFromValueFunction (formatDb)));
+
+    layout.add (std::make_unique<Float> (juce::ParameterID { id::linen, version4 }, "LINEN",
+                                         juce::NormalisableRange<float> (0.0f, 1.0f, 0.001f), 0.0f,
+                                         Attributes().withStringFromValueFunction (formatPercent)
+                                                     .withValueFromStringFunction ([] (const juce::String& text)
+                                                                                   { return text.getFloatValue() / 100.0f; })));
 
     layout.add (std::make_unique<Float> (juce::ParameterID { id::silk, version }, "Silk",
                                          juce::NormalisableRange<float> (0.0f, 1.0f, 0.001f), 0.5f,
@@ -221,6 +234,12 @@ inline juce::AudioProcessorValueTreeState::ParameterLayout createLayout()
                                           juce::StringArray { "Soft", "Hard" }, 0));
     layout.add (std::make_unique<Bool> (juce::ParameterID { id::deharshGlare, version }, "De-harsh Glare Focus", true));
     layout.add (std::make_unique<Bool> (juce::ParameterID { id::deharshBody, version }, "De-harsh Body Protect", true));
+    layout.add (std::make_unique<Choice> (juce::ParameterID { id::deharshKey, version4 }, "De-harsh Key",
+                                          juce::StringArray { "Off", "C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B" }, 0));
+    layout.add (std::make_unique<Choice> (juce::ParameterID { id::deharshScale, version4 }, "De-harsh Scale",
+                                          juce::StringArray { "Major", "Minor" }, 0));
+    layout.add (std::make_unique<Float> (juce::ParameterID { id::deharshTune, version4 }, "De-harsh Tune",
+                                         juce::NormalisableRange<float> (0.0f, 1.0f, 0.001f), 0.0f, percentAttributes));
     layout.add (std::make_unique<Bool> (juce::ParameterID { id::deharshDelta, version }, "De-harsh Delta", false));
     layout.add (std::make_unique<Bool> (juce::ParameterID { id::deharshSidechain, version }, "De-harsh Sidechain", false));
 
@@ -255,7 +274,9 @@ inline juce::AudioProcessorValueTreeState::ParameterLayout createLayout()
 
     // Air
     layout.add (std::make_unique<Bool> (juce::ParameterID { id::airOn, version2 }, "Air On", true));
-    layout.add (std::make_unique<Float> (juce::ParameterID { id::airAmount, version }, "Air",
+    layout.add (std::make_unique<Float> (juce::ParameterID { id::airAmount, version }, "High Air",
+                                         juce::NormalisableRange<float> (0.0f, 1.0f, 0.001f), 0.0f, percentAttributes));
+    layout.add (std::make_unique<Float> (juce::ParameterID { id::airMid, version4 }, "Mid Air",
                                          juce::NormalisableRange<float> (0.0f, 1.0f, 0.001f), 0.0f, percentAttributes));
     layout.add (std::make_unique<Float> (juce::ParameterID { id::airDeEss, version }, "Air De-ess",
                                          juce::NormalisableRange<float> (0.0f, 1.0f, 0.001f), 0.0f, percentAttributes));
@@ -270,6 +291,7 @@ struct Handles
         : inputGain        (*state.getRawParameterValue (id::inputGain)),
           outputGain       (*state.getRawParameterValue (id::outputGain)),
           mix              (*state.getRawParameterValue (id::mix)),
+          linen            (*state.getRawParameterValue (id::linen)),
           silk             (*state.getRawParameterValue (id::silk)),
           pain             (*state.getRawParameterValue (id::pain)),
           nullTest         (*state.getRawParameterValue (id::nullTest)),
@@ -296,6 +318,9 @@ struct Handles
           deharshMode      (*state.getRawParameterValue (id::deharshMode)),
           deharshGlare     (*state.getRawParameterValue (id::deharshGlare)),
           deharshBody      (*state.getRawParameterValue (id::deharshBody)),
+          deharshKey       (*state.getRawParameterValue (id::deharshKey)),
+          deharshScale     (*state.getRawParameterValue (id::deharshScale)),
+          deharshTune      (*state.getRawParameterValue (id::deharshTune)),
           deharshDelta     (*state.getRawParameterValue (id::deharshDelta)),
           deharshSidechain (*state.getRawParameterValue (id::deharshSidechain)),
           compOn           (*state.getRawParameterValue (id::compOn)),
@@ -311,7 +336,8 @@ struct Handles
           adcOptoReduction (*state.getRawParameterValue (id::adcOptoReduction)),
           airOn            (*state.getRawParameterValue (id::airOn)),
           airAmount        (*state.getRawParameterValue (id::airAmount)),
-          airDeEss         (*state.getRawParameterValue (id::airDeEss))
+          airDeEss         (*state.getRawParameterValue (id::airDeEss)),
+          airMid           (*state.getRawParameterValue (id::airMid))
     {
     }
 
@@ -321,6 +347,7 @@ struct Handles
         p.inputGainDb  = inputGain.load();
         p.outputGainDb = outputGain.load();
         p.mix          = mix.load();
+        p.linen        = linen.load();
         p.silk         = silk.load();
         p.pain         = pain.load();
         p.nullTest     = nullTest.load() > 0.5f;
@@ -354,6 +381,9 @@ struct Handles
         d.hard        = deharshMode.load() > 0.5f;
         d.glareFocus  = deharshGlare.load() > 0.5f;
         d.bodyProtect = deharshBody.load() > 0.5f;
+        d.key         = juce::roundToInt (deharshKey.load()) - 1;
+        d.minor       = deharshScale.load() > 0.5f;
+        d.tune        = deharshTune.load();
         d.delta       = deharshDelta.load() > 0.5f;
         p.deharshSidechain = deharshSidechain.load() > 0.5f;
 
@@ -370,12 +400,14 @@ struct Handles
 
         p.air.amount = airAmount.load();
         p.air.deEss  = airDeEss.load();
+        p.air.mid    = airMid.load();
         return p;
     }
 
     std::atomic<float>& inputGain;
     std::atomic<float>& outputGain;
     std::atomic<float>& mix;
+    std::atomic<float>& linen;
     std::atomic<float>& silk;
     std::atomic<float>& pain;
     std::atomic<float>& nullTest;
@@ -402,6 +434,9 @@ struct Handles
     std::atomic<float>& deharshMode;
     std::atomic<float>& deharshGlare;
     std::atomic<float>& deharshBody;
+    std::atomic<float>& deharshKey;
+    std::atomic<float>& deharshScale;
+    std::atomic<float>& deharshTune;
     std::atomic<float>& deharshDelta;
     std::atomic<float>& deharshSidechain;
     std::atomic<float>& compOn;
@@ -418,6 +453,7 @@ struct Handles
     std::atomic<float>& airOn;
     std::atomic<float>& airAmount;
     std::atomic<float>& airDeEss;
+    std::atomic<float>& airMid;
 };
 
 } // namespace linen::params

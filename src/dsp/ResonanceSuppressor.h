@@ -24,6 +24,12 @@ struct DeharshParams
     // Pain coupling (0..1): stricter above 5.5 kHz (clamps distortion fizz),
     // +3 dB of headroom in the 1.5-3.2 kHz throat-ache band.
     float painTilt = 0.0f;
+
+    // Key mode: harmonics out of the song's key are tamed, those in it are
+    // spared and lifted a little (400 Hz-12 kHz, where bins resolve semitones).
+    int key = -1;                // -1 = off, 0 = C ... 11 = B
+    bool minor = false;          // natural minor, else major
+    float tune = 0.0f;           // 0..1: how strongly
 };
 
 /** Smoothed spectrum and gain reduction at log-spaced points, for the GUI.
@@ -57,6 +63,12 @@ struct DeharshDisplay
          weighting and body protection, then smoothed in time (attack/release)
          and across frequency (so cuts are smooth bells, not ringing notches).
       5. Applied to every channel's spectrum with the same gains (stereo-linked).
+
+    Refinements: the threshold adapts to what the voice holds all the time
+    (its tone), so only what pokes up above that is cut; lows move slower and
+    highs faster; a consonant's onset passes before cuts deepen; and part of
+    each cut above 2 kHz is given back an octave below, so the voice keeps
+    its body instead of sounding hollowed out.
 
     At Depth 0, once every cut has let go, the input is passed straight
     through (delayed by the latency) rather than through the FFT round trip,
@@ -124,6 +136,21 @@ private:
     float focusMaskLow = -1.0f, focusMaskHigh = -1.0f;
     std::vector<float> tiltDepth, tiltHeadroom;
     float tiltCachedFor = -1.0f;
+
+    // Key mode: each bin's in-key weight (1 on a scale note, 0 a semitone
+    // off) and how much the key reaches it (0 outside 400 Hz-12 kHz).
+    std::vector<float> keyWeight, keyReach, keyExtra, liftTarget, liftSmoothed;
+    int keyCachedFor = -2;
+    bool minorCachedFor = false;
+    void updateKeyWeights();
+
+    // Frequency-scaled ballistics: lows move slower, highs faster (an exponent
+    // per bin on the attack/release coefficients).
+    std::vector<float> timeScale;
+    // Transient protection: the last frame's level above 2 kHz.
+    float lastTopDb = -200.0f;
+    // Warm De-harsh: part of each cut given back an octave below, as body.
+    std::vector<float> bodyLift;
     std::vector<int> queue;
 
     PitchTracker pitchTracker;

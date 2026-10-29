@@ -33,6 +33,7 @@ struct EngineParams
     CompParams comp;
     AirParams air;
 
+    float linen = 0.0f; // the LINEN hero knob, 0..1; 0 = settings as they are
     float silk = 0.5f;  // the Silk macro; 0.5 = settings as they are
     float pain = 0.0f;  // the Pain macro, 0..1; 0 = off
 
@@ -98,6 +99,12 @@ private:
     EngineParams params;
 
     juce::SmoothedValue<float, juce::ValueSmoothingTypes::Multiplicative> inputGain { 1.0f }, outputGain { 1.0f };
+
+    // LINEN's level match: what the knob does is held at the untouched voice's
+    // long-term level, so it changes the sound, not the loudness.
+    juce::SmoothedValue<float, juce::ValueSmoothingTypes::Multiplicative> levelMatch { 1.0f };
+    double dryPower = 0.0, wetPower = 0.0;
+    bool levelPrimed = false;
     juce::SmoothedValue<float> mix { 1.0f }, nullAmount { 0.0f };
 
     ToneShelves tone;

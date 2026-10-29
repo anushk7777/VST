@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.22)
 
-project(Linen VERSION 0.4.0 LANGUAGES C CXX)
+project(Linen VERSION 0.5.0 LANGUAGES C CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -42,6 +42,7 @@ set(LINEN_DSP_SOURCES
     src/dsp/Air.cpp
     src/dsp/AutoAssist.cpp
     src/dsp/Eq1073.cpp
+    src/dsp/HeroMacro.cpp
     src/dsp/LinenEngine.cpp
     src/dsp/PainEngine.cpp
     src/dsp/Preamp.cpp
@@ -120,6 +121,7 @@ target_sources(LinenTests PRIVATE
     tests/PreampEqTests.cpp
     tests/CompAirTests.cpp
     tests/AdcTests.cpp
+    tests/KeyHeroTests.cpp
     tests/SilkTests.cpp
     tests/PainTests.cpp
     tests/AssistTests.cpp

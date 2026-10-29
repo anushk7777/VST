@@ -6,11 +6,36 @@ namespace linen
 namespace
 {
     constexpr int controlInterval = 16;
-    constexpr float shelfHz = 10000.0f;
-    constexpr float maxAirDb = 6.0f, maxBreathLiftDb = 3.0f, maxDeEssDb = 6.0f;
-    constexpr float maxExciter = 0.07f;   // sparkle sits about 26 dB under the 5-10 kHz band at 100%
+    constexpr float maxLiftDb = 10.0f, maxDeEssDb = 6.0f;
+    constexpr double midHz = 3000.0, highHz = 9000.0, shelfHz = 8000.0;
+
+    // The side signal's ceiling, relative to the whole voice: a band sitting
+    // well under the voice (a dull top) gets the full lift, one near the
+    // voice's own level (a bright top, an S) hardly any. Relative, so it
+    // behaves the same whatever the recording level.
+    // The upper mids sit nearer the voice's level than the top does, so Mid
+    // Air's ceiling is higher.
+    constexpr float highCeiling = 0.15f;        // -16.5 dB under the voice (RMS)
+    constexpr float midCeiling = 0.5f;          // -6 dB under the voice
+    // Below the noise floor the lift fades out again, so hiss is not raised.
+    constexpr float floorLow = 0.00003f, floorHigh = 0.0003f;  // -90 to -70 dBFS
 
     float toDb (float power) { return 10.0f * std::log10 (power + 1.0e-12f); }
+
+    float sideGain (float k, float envelope, float voice, float ceiling)
+    {
+        if (k <= 0.0f)
+            return 0.0f;
+        const float t = juce::jlimit (0.0f, 1.0f, (envelope - floorLow) / (floorHigh - floorLow));
+        return k / (1.0f + envelope * k / (ceiling * voice + 1.0e-9f)) * (t * t * (3.0f - 2.0f * t));
+    }
+}
+
+float Air::liftDbAt (float liftDb, float bandUnderVoiceDb)
+{
+    const float k = juce::Decibels::decibelsToGain (liftDb) - 1.0f;
+    return juce::Decibels::gainToDecibels (1.0f + sideGain (k, juce::Decibels::decibelsToGain (bandUnderVoiceDb - 30.0f),
+                                                            juce::Decibels::decibelsToGain (-30.0f), highCeiling));
 }
 
 void Air::prepare (double newSampleRate, int maxBlockSize, int newNumChannels)
@@ -27,32 +52,25 @@ void Air::prepare (double newSampleRate, int maxBlockSize, int newNumChannels)
     sibAttack = (float) std::exp (-(double) controlInterval / (0.002 * sampleRate));
     sibRelease = (float) std::exp (-(double) controlInterval / (0.060 * sampleRate));
 
-    shelves.assign ((size_t) numChannels, {});
+    // RMS levels, smooth enough not to ripple with the voice's pitch (which
+    // would modulate the air), quick enough to duck under an S.
+    envAttack = (float) std::exp (-1.0 / (0.004 * sampleRate));
+    envRelease = (float) std::exp (-1.0 / (0.050 * sampleRate));
+    voiceRelease = (float) std::exp (-1.0 / (0.030 * sampleRate));
+    gainGlide = (float) std::exp (-1.0 / (0.006 * sampleRate));
 
-    // The exciter squares the 5–10 kHz band: its products reach ~20 kHz and
-    // beyond, so run it at 2x to keep them from folding back down.
-    exciterOversampling = std::make_unique<juce::dsp::Oversampling<float>> ((size_t) juce::jmax (1, numChannels), 1,
-                                                                            juce::dsp::Oversampling<float>::filterHalfBandPolyphaseIIR, true);
-    exciterOversampling->initProcessing ((size_t) maxBlockSize);
-    exciterBand.setSize (juce::jmax (1, numChannels), maxBlockSize, false, false, true);
-    chunkExciterGain.assign ((size_t) (maxBlockSize / controlInterval + 1), 0.0f);
-
-    const double os = sampleRate * 2.0;
-    const double bandTop = juce::jmin (10000.0, sampleRate * 0.21);
-    exciter.assign ((size_t) numChannels, {});
-    for (auto& e : exciter)
+    for (auto [band, hz] : { std::pair { &midBand, midHz }, std::pair { &highBand, highHz } })
     {
-        // 4th-order both sides: any low vowel energy left in the band would
-        // intermodulate with the top when squared.
-        e.bandHp1.c = Biquad::Coeffs::highPass (sampleRate, 5000.0, 0.54);
-        e.bandHp2.c = Biquad::Coeffs::highPass (sampleRate, 5000.0, 1.31);
-        e.bandLp1.c = Biquad::Coeffs::lowPass (sampleRate, bandTop, 0.54);   // 4th-order Butterworth
-        e.bandLp2.c = Biquad::Coeffs::lowPass (sampleRate, bandTop, 1.31);
-        e.outHp1.c = Biquad::Coeffs::highPass (os, 9000.0, 0.54);           // keep only the octave-up sparkle
-        e.outHp2.c = Biquad::Coeffs::highPass (os, 9000.0, 1.31);
+        const auto coeffs = Biquad::Coeffs::highPass (sampleRate, juce::jmin (hz, sampleRate * 0.4), 0.707);
+        band->detector.c = coeffs;
+        band->filters.assign ((size_t) numChannels, {});
+        for (auto& f : band->filters)
+            f.c = coeffs;
     }
-    exciterPowerCoeff = (float) std::exp (-1.0 / (0.010 * os));
+    midGain.assign ((size_t) maxBlockSize, 0.0f);
+    highGain.assign ((size_t) maxBlockSize, 0.0f);
 
+    shelves.assign ((size_t) numChannels, {});
     reset();
 }
 
@@ -61,28 +79,27 @@ void Air::reset()
     for (auto* b : { &vowelHp, &vowelLp, &sibHp, &sibLp })
         b->reset();
     vowelPower = sibPower = 0.0f;
-    sibilance = breath = 0.0f;
+    sibilance = 0.0f;
     sibilanceMeter.store (0.0f);
 
+    for (auto* band : { &midBand, &highBand })
+    {
+        band->detector.reset();
+        for (auto& f : band->filters)
+            f.reset();
+        band->envelope = band->gain = 0.0f;
+    }
+    voiceEnvelope = 0.0f;
+
     shelfDb = 0.0f;
-    exciterGain = 0.0f;
     for (auto& s : shelves)
     {
         s.reset();
         s.c = Biquad::Coeffs::identity();
     }
-
-    for (auto& e : exciter)
-    {
-        for (auto* b : { &e.bandHp1, &e.bandHp2, &e.bandLp1, &e.bandLp2, &e.outHp1, &e.outHp2 })
-            b->reset();
-        e.power = 0.0f;
-    }
-    if (exciterOversampling != nullptr)
-        exciterOversampling->reset();
 }
 
-void Air::updateShelf()
+void Air::updateControl()
 {
     const float vowelDb = toDb (vowelPower), sibDb = toDb (sibPower);
 
@@ -91,24 +108,19 @@ void Air::updateShelf()
                           * juce::jlimit (0.0f, 1.0f, (sibDb + 50.0f) / 10.0f);
     sibilance = sibTarget + (sibilance - sibTarget) * (sibTarget > sibilance ? sibAttack : sibRelease);
 
-    // Breath: little vowel, quiet but present air. Lift it a touch.
-    const float breathTarget = juce::jlimit (0.0f, 1.0f, (-40.0f - vowelDb) / 15.0f)
-                             * juce::jlimit (0.0f, 1.0f, (sibDb + 75.0f) / 10.0f)
-                             * (1.0f - sibilance);
-    breath += (breathTarget - breath) * 0.05f;
-
-    const float open = 1.0f - sibilance;
-    const float amount = juce::jlimit (0.0f, 1.0f, params.amount);
-    // Scorched air (Pain): the lift is damped and the top tips gently down.
+    // The air closes on S and T sounds; scorched air (Pain) is damped.
     const float scorch = juce::jlimit (0.0f, 1.0f, params.scorch);
-    shelfDb = amount * open * (maxAirDb + maxBreathLiftDb * breath) * (1.0f - 0.6f * scorch)
-            - juce::jlimit (0.0f, 1.0f, params.deEss) * maxDeEssDb * sibilance
-            - 2.5f * scorch;
-    // Silk loom: where De-harsh cut the top, the sparkle grows (up to double at
-    // 6 dB of cut), so the voice stays open without the fizz coming back.
-    const float woven = juce::jlimit (0.0f, 1.0f, params.loom) * juce::jlimit (0.0f, 1.0f, harshCutDb / 6.0f);
-    exciterGain = amount * open * maxExciter * (1.0f - 0.7f * scorch) * (1.0f + woven);
+    const float open = (1.0f - 0.7f * sibilance) * (1.0f - 0.6f * scorch);
 
+    // Silk loom: where De-harsh cut the top, High Air opens further (up to +4 dB more at 6 dB of cut).
+    const float woven = juce::jlimit (0.0f, 1.0f, params.loom) * juce::jlimit (0.0f, 1.0f, harshCutDb / 6.0f);
+    const float highLift = maxLiftDb * juce::jlimit (0.0f, 1.0f, params.amount) * open
+                         + (params.amount > 0.0f ? 4.0f * woven * open : 0.0f);
+    const float midLift = maxLiftDb * juce::jlimit (0.0f, 1.0f, params.mid) * open;
+    highBand.k = highLift > 0.0f ? juce::Decibels::decibelsToGain (highLift) - 1.0f : 0.0f;
+    midBand.k = midLift > 0.0f ? juce::Decibels::decibelsToGain (midLift) - 1.0f : 0.0f;
+
+    shelfDb = -juce::jlimit (0.0f, 1.0f, params.deEss) * maxDeEssDb * sibilance - 2.5f * scorch;
     const auto c = std::abs (shelfDb) < 0.001f ? Biquad::Coeffs::identity()
                                                : Biquad::Coeffs::highShelf (sampleRate, shelfHz, 0.6, shelfDb);
     for (auto& s : shelves)
@@ -124,28 +136,14 @@ void Air::process (juce::AudioBuffer<float>& buffer)
     if (chans == 0)
         return;
 
-    const bool idle = params.amount <= 0.0f && params.deEss <= 0.0f && params.scorch <= 0.0f
-                   && std::abs (shelfDb) < 0.001f && exciterGain <= 0.0f;
+    const bool idle = params.amount <= 0.0f && params.mid <= 0.0f && params.deEss <= 0.0f && params.scorch <= 0.0f
+                   && std::abs (shelfDb) < 0.001f;
     const float norm = 1.0f / (float) chans;
 
-    // Exciter band, taken from the input before the shelf.
-    const bool exciting = ! idle;
-    if (exciting)
-    {
-        for (int ch = 0; ch < chans; ++ch)
-        {
-            auto& e = exciter[(size_t) ch];
-            const auto* in = buffer.getReadPointer (ch);
-            auto* band = exciterBand.getWritePointer (ch);
-            for (int i = 0; i < n; ++i)
-                band[i] = e.bandLp2.process (e.bandLp1.process (e.bandHp2.process (e.bandHp1.process (in[i]))));
-        }
-    }
-
+    // Detection (mono, so both channels move together), every sample.
     for (int start = 0; start < n; start += controlInterval)
     {
         const int len = juce::jmin (controlInterval, n - start);
-
         for (int i = start; i < start + len; ++i)
         {
             float x = 0.0f;
@@ -157,46 +155,40 @@ void Air::process (juce::AudioBuffer<float>& buffer)
             const float s = sibLp.process (sibHp.process (x));
             vowelPower = v * v + (vowelPower - v * v) * powerCoeff;
             sibPower = s * s + (sibPower - s * s) * powerCoeff;
+
+            if (! idle)
+            {
+                voiceEnvelope = x * x + (voiceEnvelope - x * x) * voiceRelease;   // power
+                const float voice = std::sqrt (voiceEnvelope);
+                for (auto [band, gains, ceiling] : { std::tuple { &midBand, &midGain, midCeiling }, std::tuple { &highBand, &highGain, highCeiling } })
+                {
+                    const float b = band->detector.process (x);
+                    band->envelope = b * b + (band->envelope - b * b) * (b * b > band->envelope ? envAttack : envRelease);
+                    const float target = sideGain (band->k, std::sqrt (band->envelope), voice, ceiling);
+                    band->gain = target + (band->gain - target) * gainGlide;
+                    (*gains)[(size_t) i] = band->gain;
+                }
+            }
         }
 
-        updateShelf();
-        chunkExciterGain[(size_t) (start / controlInterval)] = exciterGain;
-
+        updateControl();
         if (idle)
             continue;
 
         for (int ch = 0; ch < chans; ++ch)
         {
-            auto* d = buffer.getWritePointer (ch, start);
+            auto* d = buffer.getWritePointer (ch);
+            auto& mid = midBand.filters[(size_t) ch];
+            auto& high = highBand.filters[(size_t) ch];
             auto& shelf = shelves[(size_t) ch];
-            for (int i = 0; i < len; ++i)
-                d[i] = shelf.process (d[i]);
+            for (int i = start; i < start + len; ++i)
+            {
+                const float x = d[i];
+                const float side = mid.process (x) * midGain[(size_t) i] + high.process (x) * highGain[(size_t) i];
+                d[i] = shelf.process (x + side);
+            }
         }
     }
-
-    if (! exciting)
-        return;
-
-    // Square the band at 2x (level-normalised, so it tracks the voice), keep the octave above.
-    juce::dsp::AudioBlock<float> bandBlock (exciterBand.getArrayOfWritePointers(), (size_t) chans, (size_t) n);
-    auto up = exciterOversampling->processSamplesUp (bandBlock);
-    for (int ch = 0; ch < chans; ++ch)
-    {
-        auto& e = exciter[(size_t) ch];
-        auto* d = up.getChannelPointer ((size_t) ch);
-        for (int i = 0; i < (int) up.getNumSamples(); ++i)
-        {
-            e.power = d[i] * d[i] + (e.power - d[i] * d[i]) * exciterPowerCoeff;
-            const float squared = d[i] * d[i] / (std::sqrt (e.power) + 1.0e-4f);
-            d[i] = e.outHp2.process (e.outHp1.process (squared));
-        }
-    }
-    exciterOversampling->processSamplesDown (bandBlock);
-
-    for (int ch = 0; ch < chans; ++ch)
-        for (int start = 0; start < n; start += controlInterval)
-            buffer.addFrom (ch, start, exciterBand, ch, start, juce::jmin (controlInterval, n - start),
-                            chunkExciterGain[(size_t) (start / controlInterval)]);
 }
 
 } // namespace linen

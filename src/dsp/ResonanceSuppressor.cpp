@@ -89,6 +89,12 @@ void ResonanceSuppressor::prepare (double newSampleRate, int newNumChannels)
         v->assign ((size_t) numBins, 0.0f);
 
     prefix.assign ((size_t) numBins + 1, 0.0f);
+    for (auto* v : { &keyWeight, &keyReach, &keyExtra, &liftTarget, &liftSmoothed, &bodyLift })
+        v->assign ((size_t) numBins, 0.0f);
+    timeScale.assign ((size_t) numBins, 1.0f);
+    for (int k = 1; k < numBins; ++k)
+        timeScale[(size_t) k] = 1.0f / juce::jlimit (0.5f, 2.0f, std::pow ((float) k * binHz / 1000.0f, -0.35f));
+    keyCachedFor = -2;
     queue.assign ((size_t) numBins + 1, 0);
 
     for (int k = 0; k < numBins; ++k)
@@ -119,6 +125,9 @@ void ResonanceSuppressor::reset()
     std::fill (cutSmoothed.begin(), cutSmoothed.end(), 0.0f);
     std::fill (cutFinal.begin(), cutFinal.end(), 0.0f);
     std::fill (gains.begin(), gains.end(), 1.0f);
+    for (auto* v : { &keyExtra, &liftTarget, &liftSmoothed, &bodyLift })
+        std::fill (v->begin(), v->end(), 0.0f);
+    lastTopDb = -200.0f;
 
     fifoPos = 0;
     hopCounter = 0;
@@ -126,7 +135,7 @@ void ResonanceSuppressor::reset()
     lastPitch = {};
     protectedPitch = 0.0f;
     protectAmount = 0.0f;
-    passThrough = params.depth <= 0.0f;
+    passThrough = params.depth <= 0.0f && ! (params.key >= 0 && params.tune > 0.0f);
 
     for (int p = 0; p < DeharshDisplay::numPoints; ++p)
     {
@@ -301,6 +310,39 @@ void ResonanceSuppressor::analyseDetector()
         levelDb[(size_t) k] = 10.0f * std::log10 (std::norm (detSpectrum[(size_t) k]) + 1.0e-20f) + calibration;
 }
 
+void ResonanceSuppressor::updateKeyWeights()
+{
+    if (params.key == keyCachedFor && params.minor == minorCachedFor)
+        return;
+    keyCachedFor = params.key;
+    minorCachedFor = params.minor;
+
+    static constexpr int majorScale[] { 0, 2, 4, 5, 7, 9, 11 }, minorScale[] { 0, 2, 3, 5, 7, 8, 10 };
+    const int* scale = params.minor ? minorScale : majorScale;
+
+    for (int k = 0; k < numBins; ++k)
+    {
+        const float hz = binFreq[(size_t) k];
+        keyReach[(size_t) k] = hz > 0.0f ? bandMask (hz, 400.0f, 12000.0f, 0.25f) : 0.0f;
+        if (hz <= 0.0f)
+        {
+            keyWeight[(size_t) k] = 1.0f;
+            continue;
+        }
+
+        // Distance (semitones) from this bin to the nearest note of the scale.
+        const float pitchClass = std::fmod (69.0f + 12.0f * std::log2 (hz / 440.0f) - (float) params.key + 1200.0f, 12.0f);
+        float nearest = 12.0f;
+        for (int i = 0; i < 7; ++i)
+        {
+            const float d = std::abs (pitchClass - (float) scale[i]);
+            nearest = juce::jmin (nearest, juce::jmin (d, 12.0f - d));
+        }
+        const float c = std::cos (0.5f * juce::MathConstants<float>::pi * juce::jmin (1.0f, nearest));
+        keyWeight[(size_t) k] = c * c;
+    }
+}
+
 void ResonanceSuppressor::computeCuts()
 {
     const float detail = juce::jlimit (0.0f, 1.0f, params.detail);
@@ -349,12 +391,21 @@ void ResonanceSuppressor::computeCuts()
     }
 
     const float threshold = 1.0f + 3.0f * detail;
+    const bool keyActive = params.key >= 0 && params.tune > 0.0f;
+    const float tune = juce::jlimit (0.0f, 1.0f, params.tune);
+    if (keyActive)
+        updateKeyWeights();
     const float knee = params.hard ? 0.0f : 6.0f;
     const float averageCoeff = 1.0f - std::exp (-hopSeconds / 2.0f);
 
     for (int k = 0; k < numBins; ++k)
     {
-        float excess = levelDb[(size_t) k] - envelope[(size_t) k];
+        // Cuts follow the hull across the voice's harmonics (step 1), not the
+        // raw bins: each harmonic peaks above the smoothed envelope, and
+        // trimming them all hollows the voice out. Only a bump in the hull, a
+        // ring, counts. Key mode needs semitone precision, so it reads the bins.
+        const float binExcess = levelDb[(size_t) k] - envelope[(size_t) k];
+        float excess = scratchA[(size_t) k] - envelope[(size_t) k];
 
         if (params.glareFocus && excess > 0.0f)
             excess *= glareWeight[(size_t) k];
@@ -364,7 +415,7 @@ void ResonanceSuppressor::computeCuts()
         {
             auto& average = excessAverage[(size_t) k];
             average += (juce::jmax (0.0f, excess) - average) * averageCoeff;
-            bandThreshold += 0.6f * average;
+            bandThreshold += 1.3f * average;
         }
 
         const float over = excess - bandThreshold;
@@ -379,6 +430,20 @@ void ResonanceSuppressor::computeCuts()
             shaped = over;
 
         scratchB[(size_t) k] = juce::jmin (maxCut, depthScale * tiltDepth[(size_t) k] * shaped) * focusMask[(size_t) k];
+
+        // Key mode, where the voice has something (near or on its envelope):
+        // in-key content is lifted up to 2 dB, out-of-key content lowered up
+        // to 2 dB, and an out-of-key peak standing above the envelope (a
+        // ring) is cut harder on top. All of it works even at Depth 0.
+        if (keyActive)
+        {
+            const float out = (1.0f - keyWeight[(size_t) k]) * keyReach[(size_t) k];
+            const float in = keyWeight[(size_t) k] * keyReach[(size_t) k];
+            const float peak = juce::jmax (0.0f, binExcess - 1.0f);
+            keyExtra[(size_t) k] = juce::jmin (maxCut, 0.8f * tune * out * peak);
+            const float present = juce::jlimit (0.0f, 1.0f, (binExcess + 6.0f) / 6.0f);
+            liftTarget[(size_t) k] = 2.0f * tune * (in - out) * present;
+        }
     }
 
     // 5. Spread each cut into a smooth bell: widen (max) then blur (mean).
@@ -386,15 +451,49 @@ void ResonanceSuppressor::computeCuts()
     maxLogFrequency (scratchB.data(), scratchA.data(), spread);
     smoothLogFrequency (scratchA.data(), cutTarget.data(), spread);
 
-    // 6. Attack/release per bin.
-    const float attack = std::exp (-hopSeconds / (juce::jmax (0.5f, params.attackMs) * 0.001f));
-    const float release = std::exp (-hopSeconds / (juce::jmax (5.0f, params.releaseMs) * 0.001f));
+    // Key mode, after the spreading so it stays a semitone sharp: in-key bins
+    // keep most of their cut back, out-of-key peaks get their own.
+    if (keyActive)
+    {
+        smoothLogFrequency (keyExtra.data(), scratchA.data(), 1.0f / 48.0f);
+        for (int k = 0; k < numBins; ++k)
+            cutTarget[(size_t) k] = juce::jmin (maxCut, cutTarget[(size_t) k] * (1.0f - 0.7f * tune * keyWeight[(size_t) k] * keyReach[(size_t) k])
+                                                           + scratchA[(size_t) k] * focusMask[(size_t) k]);
+    }
+    else
+    {
+        std::fill (liftTarget.begin(), liftTarget.end(), 0.0f);
+    }
+
+    // 6. Attack/release per bin, scaled with frequency (lows slower, highs
+    //    faster). On a consonant's onset (the top jumps 6 dB in one frame) cuts
+    //    above 1.5 kHz may not deepen for that frame, so the crack passes.
+    const float attackBase = std::exp (-hopSeconds / (juce::jmax (0.5f, params.attackMs) * 0.001f));
+    const float releaseBase = std::exp (-hopSeconds / (juce::jmax (5.0f, params.releaseMs) * 0.001f));
+
+    float topPower = 0.0f;
+    for (int k = 0; k < numBins; ++k)
+        if (binFreq[(size_t) k] >= 2000.0f && binFreq[(size_t) k] <= 12000.0f)
+            topPower += std::pow (10.0f, levelDb[(size_t) k] * 0.1f);
+    const float topDb = 10.0f * std::log10 (topPower + 1.0e-20f);
+    const bool onset = topDb - lastTopDb > 6.0f && topDb > -70.0f;
+    lastTopDb = topDb;
 
     for (int k = 0; k < numBins; ++k)
     {
+        const float attack = std::pow (attackBase, timeScale[(size_t) k]);
+        const float release = std::pow (releaseBase, timeScale[(size_t) k]);
         const float target = cutTarget[(size_t) k];
         auto& current = cutSmoothed[(size_t) k];
-        current = target + (current - target) * (target > current ? attack : release);
+        if (! (onset && target > current && binFreq[(size_t) k] > 1500.0f))
+            current = target + (current - target) * (target > current ? attack : release);
+
+        const float lift = liftTarget[(size_t) k];
+        auto& lifted = liftSmoothed[(size_t) k];
+        // Lifts rise at the attack and fall at the release; dips the other way round.
+        lifted = lift + (lifted - lift) * ((lift > lifted) == (lift >= 0.0f) ? attack : release);
+        if (std::abs (lifted) < 1.0e-6f && juce::exactlyEqual (lift, 0.0f))
+            lifted = 0.0f;
     }
 
     // 7. Body protection, applied last so neither smoothing stage can leak
@@ -420,20 +519,36 @@ void ResonanceSuppressor::computeCuts()
         }
 
         cutFinal[(size_t) k] = cut;
-        gains[(size_t) k] = juce::Decibels::decibelsToGain (-cut, -200.0f);
+    }
+
+    // Warm De-harsh: 30% of each cut between 2 and 10 kHz comes back an
+    // octave below as a gentle lift (up to 1.5 dB), so taming a ring never
+    // leaves the voice thin.
+    std::fill (scratchB.begin(), scratchB.end(), 0.0f);
+    for (int k = 2; k < numBins; ++k)
+        if (binFreq[(size_t) k] >= 2000.0f && binFreq[(size_t) k] <= 10000.0f)
+            scratchB[(size_t) (k / 2)] = juce::jmax (scratchB[(size_t) (k / 2)], 0.3f * cutFinal[(size_t) k]);
+    smoothLogFrequency (scratchB.data(), bodyLift.data(), 1.0f / 6.0f);
+
+    for (int k = 0; k < numBins; ++k)
+    {
+        const float body = juce::jmin (1.5f, bodyLift[(size_t) k]);
+        gains[(size_t) k] = juce::Decibels::decibelsToGain (liftSmoothed[(size_t) k] + body - cutFinal[(size_t) k], -200.0f);
     }
 
     // 8. Off: at Depth 0, once the last cut has all but let go (well under a
     //    thousandth of a dB, far below hearing), finish the release in one step
     //    and pass the input straight through from the next sample on.
-    if (params.depth > 0.0f)
+    if (params.depth > 0.0f || keyActive)
     {
         passThrough = false;
     }
-    else if (! passThrough && *std::max_element (cutFinal.begin(), cutFinal.end()) < 0.003f)
+    else if (! passThrough && *std::max_element (cutFinal.begin(), cutFinal.end()) < 0.003f
+             && std::all_of (liftSmoothed.begin(), liftSmoothed.end(), [] (float l) { return std::abs (l) < 0.003f; }))
     {
         std::fill (cutSmoothed.begin(), cutSmoothed.end(), 0.0f);
         std::fill (cutFinal.begin(), cutFinal.end(), 0.0f);
+        std::fill (liftSmoothed.begin(), liftSmoothed.end(), 0.0f);
         std::fill (gains.begin(), gains.end(), 1.0f);
         passThrough = true;
     }
