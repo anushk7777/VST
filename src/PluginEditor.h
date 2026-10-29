@@ -72,6 +72,8 @@ private:
         void attach (juce::Button&, const char* paramId, const juce::String& tooltip);
         void parameterChanged (const juce::String& parameterID, float newValue) override;
         void paintHeader (juce::Graphics&);
+        void paintSimple (juce::Graphics&);
+        void setAdvanced (bool shouldShowConsole);
         void paintCard (juce::Graphics&, Card&, int index);
         void paintSlotLabels (juce::Graphics&);
         void updateDimming (double timestampSeconds, bool instantly = false);
@@ -116,7 +118,23 @@ private:
                          release { "Release", 46.0f }, maxCut { "Max cut", 46.0f };
 
         // Air
-        linen::LinenKnob air { "Air", 46.0f }, deEss { "De-ess", 46.0f };
+        linen::LinenKnob air { "High air", 32.0f }, midAir { "Mid air", 32.0f }, deEss { "De-ess", 32.0f };
+
+        // De-harsh's Key (in the console).
+        linen::LinenStepper deharshKey;
+        linen::LinenSegmented deharshScale;
+        linen::LinenKnob deharshTune { "Tune", 30.0f };
+
+        // The simple view: the LINEN knob, Key, Air and Output. ADVANCED shows the console.
+        linen::LinenKnob hero { "Linen", 170.0f };
+        linen::LinenStepper heroKey;
+        linen::LinenSegmented heroScale;
+        linen::LinenKnob heroTune { "Tune", 48.0f }, heroAir { "Air", 64.0f }, heroOutput { "Output", 48.0f };
+        std::unique_ptr<juce::ParameterAttachment> heroAirSync;
+        linen::LinenPill advancedSwitch { "Advanced" };
+        bool advanced = false;
+        juce::Rectangle<int> simpleArea;
+        Card simplePlate;   // the simple view's one faceplate (its shadow is cached)
 
         // Output, and the phase test
         linen::LinenKnob input { "Input", 46.0f }, mix { "Mix", 46.0f }, output { "Output", 46.0f };

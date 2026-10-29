@@ -167,6 +167,10 @@ LinenAudioProcessorEditor::Canvas::Canvas (LinenAudioProcessor& p)
                [this, &p] { return isOn (id::compOn) ? p.getTubeReductionDb() : 0.0f; },
                [this, &p] { return isOn (id::compOn) ? p.getOptoReductionDb() : 0.0f; }),
       mode (parameter (p, id::deharshMode), { "Soft", "Hard" }),
+      deharshKey (parameter (p, id::deharshKey)),
+      deharshScale (parameter (p, id::deharshScale), { "Maj", "Min" }),
+      heroKey (parameter (p, id::deharshKey)),
+      heroScale (parameter (p, id::deharshScale), { "Major", "Minor" }),
       toneLamp ([this]
                 {
                     if (! isOn (id::toneOn))
@@ -218,8 +222,9 @@ LinenAudioProcessorEditor::Canvas::Canvas (LinenAudioProcessor& p)
     preampCard.members = { &drive, &lowGain, &midGain, &highGain, &lowFreq, &midFreq, &preampLamp };
     compCard.members = { &threshold, &ratio, &compAttack, &compRelease, &optoReduction, &warmth, &compMix, &makeup,
                          &tubeSwitch, &optoSwitch, &vuMeter, &compLamp, &tubeLamp, &optoLamp };
-    deharshCard.members = { &mode, &glare, &body, &delta, &sidechain, &depth, &detail, &attack, &release, &maxCut, &deharshLamp };
-    airCard.members = { &air, &deEss, &airLamp };
+    deharshCard.members = { &mode, &glare, &body, &delta, &sidechain, &depth, &detail, &attack, &release, &maxCut,
+                            &deharshKey, &deharshScale, &deharshTune, &deharshLamp };
+    airCard.members = { &air, &midAir, &deEss, &airLamp };
     outputCard.members = { &input, &mix, &output, &nullTest, &outputLamp };
 
     addAndMakeVisible (display);
@@ -318,8 +323,58 @@ LinenAudioProcessorEditor::Canvas::Canvas (LinenAudioProcessor& p)
     attach (maxCut, id::deharshMaxCut, "Max cut: the deepest any single frequency can be cut");
 
     // Air and Output.
-    attach (air, id::airAmount, "Air: open, breathy top end that closes on S and T sounds");
+    attach (air, id::airAmount, "High Air: opens the top above 9 kHz, lifting it the more it sits quiet under the voice "
+                                "(up to +10 dB), and an already bright top or an S hardly at all");
+    attach (midAir, id::airMid, "Mid Air: the same for the upper mids above 3 kHz: presence without harshness");
     attach (deEss, id::airDeEss, "De-ess: turn the air into a gentle cut on S and T sounds");
+
+    // Key, in the De-harsh card.
+    for (auto* stepper : { &deharshKey, &heroKey })
+    {
+        stepper->setTooltip ("Key: the song's key. Out-of-key harmonics and rings are tamed, in-key ones lifted a little (needs Tune)");
+        addAndMakeVisible (*stepper);
+    }
+    for (auto* scale : { &deharshScale, &heroScale })
+    {
+        scale->setTooltip ("The key's scale: major or (natural) minor");
+        addAndMakeVisible (*scale);
+    }
+    attach (deharshTune, id::deharshTune, "Tune: how strongly the Key shapes the voice. 0 = off");
+
+    // The simple view.
+    attach (hero, id::linen, "LINEN: one knob for the whole sound. 0 = your settings untouched; turning up brings in "
+                             "the preamp, De-harsh, Dua Wox, Air and the Key together, held at the same loudness");
+    attach (heroTune, id::deharshTune, "Tune: how strongly the Key shapes the voice. 0 = off");
+    attach (heroOutput, id::outputGain, "Output gain");
+    heroOutput.setBipolar (true);
+    hero.setGlow ([this]
+    {
+        const float amount = param (id::linen);
+        return linen::LinenKnob::Glow { amount * (0.35f + 0.65f * presence()), cobalt, 0.0f };
+    });
+
+    // Air in the simple view moves both bands: High, and Mid at 60% of it.
+    heroAir.setRange (0.0, 1.0);
+    heroAir.textFromValueFunction = [] (double v) { return juce::String (juce::roundToInt (v * 100.0)) + " %"; };
+    heroAir.setTooltip ("Air: opens a dull top and the upper mids (High Air, and Mid Air at 60% of it)");
+    heroAir.setDoubleClickReturnValue (true, 0.0);
+    heroAirSync = std::make_unique<juce::ParameterAttachment> (parameter (p, id::airAmount),
+                                                              [this] (float v) { heroAir.setValue (v, juce::dontSendNotification); });
+    heroAirSync->sendInitialUpdate();
+    heroAir.onDragStart = [this] { parameter (processor, id::airMid).beginChangeGesture(); heroAirSync->beginGesture(); };
+    heroAir.onDragEnd = [this] { heroAirSync->endGesture(); parameter (processor, id::airMid).endChangeGesture(); };
+    heroAir.onValueChange = [this]
+    {
+        const auto v = (float) heroAir.getValue();
+        heroAirSync->setValueAsPartOfGesture (v);
+        auto& mid = parameter (processor, id::airMid);
+        mid.setValueNotifyingHost (mid.convertTo0to1 (0.6f * v));
+    };
+    addAndMakeVisible (heroAir);
+
+    advancedSwitch.setTooltip ("Advanced: the full console, every section and knob");
+    advancedSwitch.onClick = [this] { setAdvanced (advancedSwitch.getToggleState()); };
+    addAndMakeVisible (advancedSwitch);
     attach (input, id::inputGain, "Input gain");
     attach (mix, id::mix, "Mix: blend the processed vocal with the untouched one (latency-matched)");
     attach (output, id::outputGain, "Output gain");
@@ -370,6 +425,23 @@ LinenAudioProcessorEditor::Canvas::Canvas (LinenAudioProcessor& p)
         processor.state.addParameterListener (eqId, this);
 
     updateDimming (0.0, true);
+    setAdvanced (processor.state.state.getProperty ("advancedView", false));
+}
+
+void LinenAudioProcessorEditor::Canvas::setAdvanced (bool shouldShowConsole)
+{
+    advanced = shouldShowConsole;
+    advancedSwitch.setToggleState (advanced, juce::dontSendNotification);
+    processor.state.state.setProperty ("advancedView", advanced, nullptr);
+
+    for (auto& card : cards)
+        for (auto* c : card.members)
+            c->setVisible (advanced);
+    for (auto* c : std::initializer_list<juce::Component*> { &tonePower, &preampPower, &compPower, &deharshPower, &airPower })
+        c->setVisible (advanced);
+    for (auto* c : std::initializer_list<juce::Component*> { &hero, &heroKey, &heroScale, &heroTune, &heroAir, &heroOutput })
+        c->setVisible (! advanced);
+    repaint();
 }
 
 LinenAudioProcessorEditor::Canvas::~Canvas()
@@ -442,6 +514,7 @@ void LinenAudioProcessorEditor::Canvas::resized()
 
     // Header.
     presetBox.setBounds (getWidth() / 2 - 130, 26, 260, 28);
+    advancedSwitch.setBounds (getWidth() / 2 + 150, 29, advancedSwitch.getIdealWidth(), 22);
     listenButton.setBounds (getWidth() / 2 - 76, 62, 152, 28);
     place (pain, rightEdge - 186, 6, 90);
     place (silk, rightEdge - 92, 6, 90);
@@ -493,16 +566,32 @@ void LinenAudioProcessorEditor::Canvas::resized()
 
     const int rowBKnobY = rowBTop + 74;
     place (depth, leftX + 10, rowBTop + 62, 130);
-    x = leftX + 146;
+    x = leftX + 142;
     for (auto* knob : { &detail, &attack, &release, &maxCut })
     {
-        place (*knob, x, rowBKnobY + 6, 106);
-        x += 106;
+        place (*knob, x, rowBKnobY + 6, 92);
+        x += 92;
     }
 
+    // Key: note and scale, then Tune, in the card's last column.
+    deharshKey.setBounds (x + 2, rowBKnobY, 64, 20);
+    deharshScale.setBounds (x + 2, rowBKnobY + 26, 64, 20);
+    place (deharshTune, x + 2, rowBKnobY + 50, 64);
+
     // Air, and Output with the phase test at its top right.
-    place (air, airX + 8, rowBKnobY + 6, 86);
-    place (deEss, airX + 94, rowBKnobY + 6, 86);
+    place (air, airX + 2, rowBKnobY + 6, 62);
+    place (midAir, airX + 63, rowBKnobY + 6, 62);
+    place (deEss, airX + 124, rowBKnobY + 6, 62);
+
+    // The simple view: the LINEN knob in the middle, Key | Air | Output under it.
+    simpleArea = juce::Rectangle<int>::leftTopRightBottom (leftX, rowATop, rightEdge, rowBBottom);
+    place (hero, getWidth() / 2 - 140, rowATop + 30, 280);
+    const int rowY = hero.getBottom() + 30;
+    heroKey.setBounds (getWidth() / 2 - 330, rowY + 18, 96, 24);
+    heroScale.setBounds (getWidth() / 2 - 330, rowY + 50, 96, 24);
+    place (heroTune, getWidth() / 2 - 226, rowY + 6, 96);
+    place (heroAir, getWidth() / 2 - 60, rowY, 120);
+    place (heroOutput, getWidth() / 2 + 130, rowY + 6, 120);
     nullTest.setBounds (rightEdge - 20 - nullTest.getIdealWidth(), pillY, nullTest.getIdealWidth(), pillH);
     x = outputX + 18;
     for (auto* knob : { &input, &mix, &output })
@@ -592,6 +681,44 @@ void LinenAudioProcessorEditor::Canvas::paintCard (juce::Graphics& g, Card& card
     }
 }
 
+void LinenAudioProcessorEditor::Canvas::paintSimple (juce::Graphics& g)
+{
+    using namespace linen::palette;
+
+    // One faceplate, screwed down, with the LINEN knob's light spilling across it.
+    simplePlate.bounds = simpleArea;
+    paintCard (g, simplePlate, 6);
+
+    const auto centre = hero.getBounds().toFloat().getCentre().withY ((float) hero.getY() + (float) hero.getFootprint() * 0.5f);
+    const float amount = param (id::linen);
+    if (amount > 0.0f)
+    {
+        juce::ColourGradient spill (electric.withAlpha (0.16f * amount), centre.x, centre.y,
+                                    electric.withAlpha (0.0f), centre.x + 330.0f, centre.y, true);
+        g.setGradientFill (spill);
+        g.fillEllipse (juce::Rectangle<float> (660.0f, 440.0f).withCentre (centre));
+    }
+
+    // Engraved legends: the knob's ends, and the row's names.
+    g.setColour (ink (0.45f));
+    g.setFont (linen::fonts::sansMedium (10.0f, 0.3f));
+    const auto legend = [&g] (const juce::String& text, juce::Rectangle<int> r)
+    {
+        g.setColour (juce::Colours::white.withAlpha (0.8f));
+        g.drawText (text, r.translated (0, 1), juce::Justification::centred);
+        g.setColour (linen::palette::ink (0.5f));
+        g.drawText (text, r, juce::Justification::centred);
+    };
+    legend ("UNTOUCHED", juce::Rectangle<int> (140, 16).withCentre ({ (int) centre.x - 205, (int) centre.y + 88 }));
+    legend ("FINISHED", juce::Rectangle<int> (140, 16).withCentre ({ (int) centre.x + 205, (int) centre.y + 88 }));
+    legend ("KEY", juce::Rectangle<int> (96, 16).withCentre ({ heroKey.getBounds().getCentreX(), heroKey.getY() - 12 }));
+
+    g.setColour (ink (0.38f));
+    g.setFont (linen::fonts::sans (11.0f, 0.06f));
+    g.drawText ("ADVANCED, top right, opens the full console", juce::Rectangle<int> (simpleArea.getRight() - 344, simpleArea.getBottom() - 30, 320, 18),
+                juce::Justification::centredRight);
+}
+
 void LinenAudioProcessorEditor::Canvas::paintSlotLabels (juce::Graphics& g)
 {
     using namespace linen::palette;
@@ -628,9 +755,16 @@ void LinenAudioProcessorEditor::Canvas::paint (juce::Graphics& g)
     linen::Backdrop::drawScorch (g, getLocalBounds().toFloat(), scorch);
     paintHeader (g);
 
-    for (size_t i = 0; i < cards.size(); ++i)
-        paintCard (g, cards[i], (int) i);
-    paintSlotLabels (g);
+    if (advanced)
+    {
+        for (size_t i = 0; i < cards.size(); ++i)
+            paintCard (g, cards[i], (int) i);
+        paintSlotLabels (g);
+    }
+    else
+    {
+        paintSimple (g);
+    }
 
     drawHairline (g, (float) margin, (float) (getWidth() - margin), (float) getHeight() - 38.0f, champagne.withAlpha (0.45f));
 

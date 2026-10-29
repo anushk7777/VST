@@ -31,6 +31,7 @@ The full plan and the status of each phase are in [docs/PLAN.md](docs/PLAN.md).
 | 5c | Clean by default (bit-exact null, checked on the built VST3), clean drive calibration, Tone shelves before the preamp, section power switches, Null button | done |
 | 0.3 | Dua Wox compressor (TUBE + OPTO), boutique console UI (knurled knobs, LED rings, bat toggles, needle VU), warmth report | done |
 | 0.4 | Signature circuits (Weave, Silk loom, Cotton iron, Breath gate), Archivo type | done |
+| 0.5 | The LINEN knob and simple view, Fresh-style two-band Air, De-harsh Key mode, a De-harsh that keeps the voice (tuned on a real vocal) | done |
 | 7 | Neural preamp (needs real 1073 recordings) | planned |
 
 ## Install in FL Studio (Windows 11)
@@ -43,7 +44,16 @@ The full plan and the status of each phase are in [docs/PLAN.md](docs/PLAN.md).
 
 **Linen-Standalone-Windows** is the same thing as a standalone app, for a quick look without FL Studio.
 
-The version number is at the bottom right of the window (this one is **v0.4.0**).
+The version number is at the bottom right of the window (this one is **v0.5.0**).
+
+## The LINEN knob (the simple view)
+
+Linen opens on its simple view: one big **LINEN** knob, with **Key**, **Air** and **Output** under it.
+
+- **LINEN** runs the whole chain in one sweep, from *untouched* (0%, Clean stays bit-exact) to *finished* (100%): the preamp, De-harsh, Dua Wox (compression, Warmth, Weave), Mid and High Air, and the Key's Tune when a key is set. It only ever adds to what you have set, never takes away.
+- A slow level match (about 6 s) holds the result at your untouched vocal's loudness, so turning it up changes the sound, not the volume. Judge it by ear, not by level.
+- On a real, dark home-recorded vocal (74 s, about -21 LUFS), LINEN 100% evened its phrase dynamics from about 10.6 to 6.3 dB, opened the top (+4 dB above 10 kHz, +2 dB at 6-10 kHz) and kept the presence, at the same loudness.
+- **ADVANCED** (top right) opens the full console. The choice is saved with your project.
 
 ## Clean, and the phase test
 
@@ -181,11 +191,11 @@ Click a frequency selector for its list, or scroll/drag over it to step.
 
 The needle VU shows the total gain reduction; the two LED bars under it show how the TUBE and OPTO share it. With Ratio 1:1, Peak red. 0 and Warmth 0, Dua Wox passes the voice bit for bit.
 
-**Air** opens a 10 kHz shelf with a little extra lift on quiet breaths, and adds a soft even-harmonic sparkle (run at 2× oversampling so it never aliases). Its **Silk loom** listens to De-harsh: where harshness was cut from the top, the sparkle grows, so the voice stays open without the fizz coming back. A sibilance detector compares the top band with the vowel band. When an S or T makes the top outweigh the vowel, Air closes, and **De-ess** turns it into a gentle cut. The small light next to "Air" glows on every S.
+**Air** works in the manner of the classic "Dolby A trick" (the encoder's high bands added back to the voice, the idea behind Slate's free Fresh Air): **High Air** (a 9 kHz band) and **Mid Air** (a 3 kHz band) each lift their band the more it sits quiet under the voice, by up to 10 dB, and an already bright top, or an S, hardly at all. So a dull vocal opens up and a bright one never turns harsh. It is a level change, not a distortion: no grit, no aliasing. It works relative to the voice, so the recording level doesn't matter. Its **Silk loom** listens to De-harsh: where harshness was cut from the top, High Air opens a little further. A sibilance detector closes the air on S and T sounds, and **De-ess** turns that into a gentle cut. In the simple view, one **Air** knob moves High Air, with Mid Air at 60% of it.
 
 ## Using De-harsh
 
-De-harsh listens for frequencies that suddenly poke out above the rest of the voice (nasal ring, glassy 3 kHz glare, sharp sibilance) and turns down only those, only while they poke out. The display shows the vocal as a soft line; the copper **silk veil** hanging from the top is what is being removed right now.
+De-harsh listens for frequencies that suddenly poke out above the rest of the voice (nasal ring, glassy 3 kHz glare, sharp sibilance) and turns down only those, only while they poke out. It compares the hull across the voice's harmonics with a smoothed baseline, and its threshold adapts to the tone the voice holds all the time, so the singer's own presence is never taken for a resonance. Lows move slower and highs faster, consonant onsets pass before cuts deepen, and part of every cut above 2 kHz is given back an octave below (Warm De-harsh), so the voice never sounds hollowed out. On a real vocal at Depth 5 the vowels keep their presence (about -2 dB, where 0.4 took -6 dB). The display shows the vocal as a soft line; the copper **silk veil** hanging from the top is what is being removed right now.
 
 | Control | What it does |
 |---|---|
@@ -197,7 +207,8 @@ De-harsh listens for frequencies that suddenly poke out above the rest of the vo
 | **Glare** | Leans the detection toward 2.5–5.5 kHz, where harshness hurts most. |
 | **Body** | Tracks the sung note and never cuts its fundamental, so the vocal stays full. |
 | **Delta** | Plays only what is being removed. Use it to check that nothing musical is being taken. |
-| **Key** | Detect from the sidechain input instead (e.g. duck a beat's harsh bits where the vocal sits). |
+| **Key** (the pill) | Detect from the sidechain input instead (e.g. duck a beat's harsh bits where the vocal sits). |
+| **Key** (note and scale) **/ Tune** | Set the song's key. With Tune up, out-of-key harmonics and rings are tamed (up to -2 dB, rings harder) and in-key ones lifted (up to +2 dB), so the voice sits more musically. Works even at Depth 0. Off, or Tune 0, changes nothing. |
 | **Focus handles** | Drag the two gold handles on the display to limit where De-harsh works. Double-click resets. |
 
 Linen adds about 2290 samples of latency at 44.1/48 kHz (about 48 ms). FL Studio compensates for it automatically.
