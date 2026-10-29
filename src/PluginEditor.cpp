@@ -8,13 +8,13 @@ namespace
     constexpr int margin = 32;
     constexpr int displayTop = 112, displayHeight = 170;
 
-    // Faceplates: Tone | Preamp | ADC on top, De-harsh | Air | Output below.
+    // Faceplates: Tone | Preamp | Dua Wox on top, De-harsh | Air | Output below.
     constexpr int rowATop = 296, rowABottom = 534;
     constexpr int rowBTop = 546, rowBBottom = 758;
     constexpr int leftX = 22, toneRight = 238, preampX = 250, leftRight = 600;
     constexpr int compX = 612, airX = 612, airRight = 800, outputX = 812, rightEdge = 1178;
 
-    // Inside the ADC: TUBE slot | VU | OPTO slot.
+    // Inside Dua Wox: TUBE slot | VU | OPTO slot.
     constexpr int tubeX = compX + 12, vuX = compX + 206, optoX = compX + 394;
     constexpr int slotTop = rowATop + 44;
 
@@ -46,7 +46,8 @@ namespace
         knob.setBounds (left + (width - w) / 2, top, w, knob.getPreferredHeight());
     }
 
-    juce::Font titleFont() { return linen::fonts::serifMedium (24.0f, 0.01f); }
+    juce::Font titleFont() { return linen::fonts::display (17.0f, 0.03f); }
+    juce::Font wordmarkFont() { return linen::fonts::display (34.0f, 0.42f); }
 
     juce::String powerTip (const juce::String& section)
     {
@@ -121,7 +122,7 @@ void LinenAudioProcessorEditor::Canvas::PresetBox::paint (juce::Graphics& g)
     g.drawRoundedRectangle (r, r.getHeight() * 0.5f, 0.8f);
 
     g.setColour (espresso);
-    g.setFont (linen::fonts::serifItalic (17.0f));
+    g.setFont (linen::fonts::displayMedium (12.0f, 0.04f));
     g.drawText (processor.getProgramName (processor.getCurrentProgram()), r, juce::Justification::centred, false);
 
     // A small chevron: this opens a list.
@@ -208,7 +209,7 @@ LinenAudioProcessorEditor::Canvas::Canvas (LinenAudioProcessor& p)
     toneCard.title = "Tone";          toneCard.powerId = id::toneOn;
     preampCard.title = "Preamp";      preampCard.powerId = id::preampOn;
     preampCard.descriptor = juce::String (juce::CharPointer_UTF8 ("WARMTH  \xc2\xb7  WEIGHT"));
-    compCard.title = "ADC";           compCard.powerId = id::compOn;        compCard.descriptor = "ANUSHK DUA CIRCUIT";
+    compCard.title = "Dua Wox";       compCard.powerId = id::compOn;
     deharshCard.title = "De-harsh";   deharshCard.powerId = id::deharshOn;  deharshCard.dims = false;
     airCard.title = "Air";            airCard.powerId = id::airOn;          airCard.descriptor = "BREATH";
     outputCard.title = "Output";
@@ -257,7 +258,7 @@ LinenAudioProcessorEditor::Canvas::Canvas (LinenAudioProcessor& p)
     // Power switches.
     attach (tonePower, id::toneOn, powerTip ("Tone"));
     attach (preampPower, id::preampOn, powerTip ("Preamp"));
-    attach (compPower, id::compOn, powerTip ("The ADC compressor"));
+    attach (compPower, id::compOn, powerTip ("The Dua Wox compressor"));
     attach (deharshPower, id::deharshOn, powerTip ("De-harsh"));
     attach (airPower, id::airOn, powerTip ("Air"));
 
@@ -284,7 +285,7 @@ LinenAudioProcessorEditor::Canvas::Canvas (LinenAudioProcessor& p)
         addAndMakeVisible (*stepper);
     }
 
-    // The ADC compressor.
+    // The Dua Wox compressor.
     attach (tubeSwitch, id::adcTubeOn, "TUBE in/out: the catch. A variable-mu tube cell with an auto release: "
                                        "single peaks let go quickly, long loud lines slowly. Out is exact");
     attach (threshold, id::compThreshold, "Threshold: where the TUBE starts to lean on the voice, through a wide 12 dB knee");
@@ -296,11 +297,11 @@ LinenAudioProcessorEditor::Canvas::Canvas (LinenAudioProcessor& p)
                                        "in 60-100 ms, the rest over seconds, slower after long phrases. Out is exact");
     attach (optoReduction, id::adcOptoReduction, "Peak reduction: how hard the OPTO levels the line. 0 = off. Its knee is "
                                                  "natural and it never passes 3:1");
-    attach (warmth, id::compCotton, "Warmth: the ADC's tube line stage (mostly 2nd harmonic, at hardware levels), "
+    attach (warmth, id::compCotton, "Warmth: Dua Wox's tube line stage (mostly 2nd harmonic, at hardware levels), "
                                     "plus a touch of low-mid bloom and a softer top while it holds the voice");
     attach (compMix, id::compMix, "Blend: parallel compression, mixed with the uncompressed voice");
-    attach (makeup, id::compMakeup, "Auto gain: give back most of what the ADC takes, so it stays at about the same level");
-    vuMeter.setTooltip ("ADC gain reduction. The bars show how the TUBE and OPTO share it");
+    attach (makeup, id::compMakeup, "Auto gain: give back most of what Dua Wox takes, so it stays at about the same level");
+    vuMeter.setTooltip ("Dua Wox gain reduction. The bars show how the TUBE and OPTO share it");
     addAndMakeVisible (vuMeter);
 
     // De-harsh.
@@ -444,7 +445,7 @@ void LinenAudioProcessorEditor::Canvas::resized()
     listenButton.setBounds (getWidth() / 2 - 76, 62, 152, 28);
     place (pain, rightEdge - 186, 6, 90);
     place (silk, rightEdge - 92, 6, 90);
-    brandLamp.setBounds (margin + 196, 49, 22, 22);
+    brandLamp.setBounds (margin + (int) std::ceil (juce::GlyphArrangement::getStringWidth (wordmarkFont(), "LINEN")) + 4, 36, 22, 22);
 
     // Tone: each shelf's gain, with its frequency underneath.
     const int toneKnobY = rowATop + 72;
@@ -462,7 +463,7 @@ void LinenAudioProcessorEditor::Canvas::resized()
     lowFreq.setBounds (eqX + 4, lowGain.getBottom() + 6, eqColumn - 8, 20);
     midFreq.setBounds (eqX + eqColumn + 4, midGain.getBottom() + 6, eqColumn - 8, 20);
 
-    // ADC: the TUBE's four controls | the VU, with Warmth and Blend under it | the OPTO's big knob.
+    // Dua Wox: the TUBE's four controls | the VU, with Warmth and Blend under it | the OPTO's big knob.
     tubeSwitch.setBounds (tubeX + 1, slotTop - 6, 20, 30);
     tubeLamp.setBounds (tubeX + 70, slotTop - 1, 18, 18);
     place (threshold, tubeX, slotTop + 22, 94);
@@ -539,7 +540,7 @@ void LinenAudioProcessorEditor::Canvas::updateDimming (double timestampSeconds, 
         repaint (card.bounds.expanded (20));
     }
 
-    // Inside the ADC, a slot switched out fades back too (its switch stays bright).
+    // Inside Dua Wox, a slot switched out fades back too (its switch stays bright).
     const auto& adc = cards[2];
     const float tubeAlpha = adc.alpha * (isOn (id::adcTubeOn) ? 1.0f : 0.4f);
     const float optoAlpha = adc.alpha * (isOn (id::adcOptoOn) ? 1.0f : 0.4f);
@@ -603,7 +604,7 @@ void LinenAudioProcessorEditor::Canvas::paintSlotLabels (juce::Graphics& g)
         g.setFont (linen::fonts::sansMedium (10.0f, 0.24f));
         g.drawText (name, juce::Rectangle<int> (x + 24, slotTop - 2, 46, 20), juce::Justification::centredLeft);
         g.setColour (ink (0.42f * a));
-        g.setFont (linen::fonts::serifItalic (13.0f));
+        g.setFont (linen::fonts::sans (11.0f, 0.06f));
         g.drawText (role, juce::Rectangle<int> (x + 92, slotTop - 3, 90, 20), juce::Justification::centredLeft);
     };
     label (tubeX, "TUBE", "the catch", isOn (id::adcTubeOn));
@@ -645,11 +646,11 @@ void LinenAudioProcessorEditor::Canvas::paintHeader (juce::Graphics& g)
     using namespace linen::palette;
 
     g.setColour (espresso);
-    g.setFont (linen::fonts::serif (50.0f, 0.34f));
+    g.setFont (wordmarkFont());
     g.drawText ("LINEN", juce::Rectangle<int> (margin - 2, 22, 340, 54), juce::Justification::centredLeft);
 
     g.setColour (ink (0.58f));
-    g.setFont (linen::fonts::serifItalic (19.0f, 0.01f));
+    g.setFont (linen::fonts::sans (13.0f, 0.12f));
     g.drawText ("silk for the voice", juce::Rectangle<int> (margin, 72, 340, 22), juce::Justification::centredLeft);
 
     drawHairline (g, (float) margin, (float) (getWidth() - margin), 102.0f, champagne.withAlpha (0.55f));

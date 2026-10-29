@@ -155,6 +155,19 @@ public:
             logMessage ("H3 at 60 Hz " + juce::String (lowH3, 1) + " dB, at 1 kHz " + juce::String (midH3, 1) + " dB");
             expectGreaterThan (lowH3, midH3 + 6.0);
         }
+
+        beginTest ("Cotton iron: pushed, its leftover magnetism rounds the lows with 2nd harmonic, the top stays glassy");
+        {
+            const auto low = runPreamp (0.7f, sine (80.0f, -6.0f, 65536));
+            const auto high = runPreamp (0.7f, sine (2400.0f, -6.0f, 65536));
+            const double lowH2 = toneDb (low, 160.0) - toneDb (low, 80.0);
+            const double lowH3 = toneDb (low, 240.0) - toneDb (low, 80.0);
+            const double highH2 = toneDb (high, 4800.0) - toneDb (high, 2400.0);
+            logMessage ("80 Hz: H2 " + juce::String (lowH2, 1) + " dB, H3 " + juce::String (lowH3, 1)
+                        + " dB; 2.4 kHz: H2 " + juce::String (highH2, 1) + " dB");
+            expectGreaterThan (lowH2, highH2 + 3.0, "more 2nd in the lows than up top");
+            expectGreaterThan (lowH2, lowH3, "the lows' colour is mostly 2nd");
+        }
     }
 };
 

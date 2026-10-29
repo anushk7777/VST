@@ -7,7 +7,7 @@
 namespace linen
 {
 
-/** Settings of the ADC compressor. */
+/** Settings of the Dua Wox compressor. */
 struct CompParams
 {
     // TUBE slot: the catch.
@@ -23,11 +23,12 @@ struct CompParams
 
     // Shared.
     float warmth = 0.0f;         // 0..1: tube line stage, plus low-mid bloom and a softer top while compressing
+    float weave = 0.5f;          // 0..1: how far Warmth's colour deepens the longer the voice is held down
     bool autoMakeup = true;
     float mix = 1.0f;            // parallel blend
 };
 
-/** The ADC compressor (Anushk Dua Circuit): two soft cells in one feedback
+/** The Dua Wox compressor: two soft cells in one feedback
     loop, built from how three classic circuits behave. Both cells listen to
     the finished output, so they lean on the voice rather than clamp it, and
     they share the work instead of stacking up: when the OPTO is already
@@ -56,6 +57,13 @@ struct CompParams
 
     WARMTH: a tube line stage (mostly 2nd harmonic), plus a touch of low-mid
     bloom and a softer top in proportion to the gain reduction.
+
+    WEAVE: the longer the singer pushes (seconds of reduction), the further
+    the line stage's bias leans, so its 2nd harmonic deepens a few dB, then
+    eases back over seconds when the line relaxes.
+
+    BREATH GATE: a breath or a consonant (energy mostly above 4.5 kHz) holds
+    both cells where they are, so breaths are neither squashed nor pulled up.
 
     Gains are applied at the base rate; the harmonic colour is computed at 2x
     as a difference added to the latency-aligned signal. With no gain
@@ -131,6 +139,14 @@ private:
     Biquad sidechainHp, sidechainPresence;
     PhaseSplitter splitter;
     bool detecting = false;
+
+    // Breath gate: how much of the sidechain sits above 4.5 kHz.
+    Biquad breathHp;
+    float breathPower = 0.0f, bodyPower = 0.0f, breathiness = 0.0f;
+    float gatePowerCoeff = 0.0f, gateAttack = 0.0f, gateRelease = 0.0f;
+
+    // Weave: how long the voice has been held down (0..1).
+    float pushed = 0.0f, pushRise = 0.0f, pushFall = 0.0f;
 
     // TUBE state: gain reduction in dB, fast and slow halves of the recovery.
     float tubeFast = 0.0f, tubeSlow = 0.0f;

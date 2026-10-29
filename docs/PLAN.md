@@ -79,7 +79,7 @@ Verification:
 - **Surface:**
   - a procedural linen weave (fine crosshatch at about 1.8% opacity with a soft top-lit vignette), drawn once per resize into a cached tile, with no PNGs;
   - layered inner and drop shadows via `sudara/melatonin_blur`.
-- **Type:** Cormorant Garamond for the wordmark and section headers, Inter (tracked +0.08em) for readouts. Both are OFL fonts, embedded through BinaryData.
+- **Type (0.4):** Archivo Expanded SemiBold for the wordmark and section titles, Archivo SemiCondensed for labels and readouts. Static cuts of the OFL variable font, embedded through BinaryData.
 - **Spectrum:**
   - 1/6-octave control points joined by Catmull-Rom splines, never raw FFT bins;
   - the gain-reduction "silk veil" hangs down from the top with a champagne→terracotta fill and 15 ms / 350 ms ballistics;
@@ -125,7 +125,7 @@ Each phase is pushed with a Windows build artifact for the owner to try in FL St
 - Pushing needs `add_repo` with push access to `anushk7777/VST`. The repo is empty, so the first push creates `main`.
 - The container builds the headless DSP tests on Linux; Windows binaries come from GitHub Actions.
 
-## 0.4 (planned): the signature sound
+## 0.4 (done): the signature sound
 
 Goal: a voice through Linen sounds like Linen and nothing else. No plugin can be
 made impossible to imitate, so the signature comes from interactions that are
@@ -146,3 +146,9 @@ each other, all inside the clean budgets (non-Pain presets at or below -45 dB TH
 
 Every stage keeps the rules: exact when off, latency reported, a measurable
 test each, LinenCheck budgets re-measured.
+
+Shipped in 0.4: Weave (Warmth's bias leans with seconds of reduction, CompParams::weave),
+Silk loom (Air's exciter grows with De-harsh's cut above 2 kHz, AirParams::loom),
+Cotton iron (input-transformer remanence, a trace at house drive, growing past 30%),
+Breath gate (energy above 4.5 kHz holds both Dua Wox cells). Silk drives Weave and loom.
+Tests: AdcTests (Weave, Breath gate), LoomTests, PreampTests (Cotton iron).

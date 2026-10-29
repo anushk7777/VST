@@ -51,7 +51,7 @@ namespace id
     inline constexpr auto deharshDelta     = "deharsh_delta";
     inline constexpr auto deharshSidechain = "deharsh_sidechain";
 
-    // The ADC compressor. Its TUBE slot keeps the comp_* IDs from 0.1/0.2.
+    // The Dua Wox compressor. Its TUBE slot keeps the comp_* IDs from 0.1/0.2.
     inline constexpr auto compOn        = "comp_on";
     inline constexpr auto adcTubeOn     = "adc_tube_on";
     inline constexpr auto compThreshold = "comp_threshold";
@@ -71,7 +71,7 @@ namespace id
 
 inline constexpr int version = 1;      // parameters since 0.1
 inline constexpr int version2 = 2;     // added in 0.2: Tone, power switches, Null
-inline constexpr int version3 = 3;     // added in 0.3: the ADC compressor's slots
+inline constexpr int version3 = 3;     // added in 0.3: the Dua Wox compressor's slots
 
 inline juce::String formatDb (float value, int)
 {
@@ -224,33 +224,33 @@ inline juce::AudioProcessorValueTreeState::ParameterLayout createLayout()
     layout.add (std::make_unique<Bool> (juce::ParameterID { id::deharshDelta, version }, "De-harsh Delta", false));
     layout.add (std::make_unique<Bool> (juce::ParameterID { id::deharshSidechain, version }, "De-harsh Sidechain", false));
 
-    // ADC compressor (Anushk Dua Circuit). TUBE: ratio 1:1 = off. OPTO: reduction 0 = off.
-    layout.add (std::make_unique<Bool> (juce::ParameterID { id::compOn, version2 }, "ADC On", true));
-    layout.add (std::make_unique<Bool> (juce::ParameterID { id::adcTubeOn, version3 }, "ADC Tube On", true));
-    layout.add (std::make_unique<Float> (juce::ParameterID { id::compThreshold, version }, "ADC Tube Threshold",
+    // Dua Wox compressor. TUBE: ratio 1:1 = off. OPTO: reduction 0 = off.
+    layout.add (std::make_unique<Bool> (juce::ParameterID { id::compOn, version2 }, "Dua Wox On", true));
+    layout.add (std::make_unique<Bool> (juce::ParameterID { id::adcTubeOn, version3 }, "Dua Wox Tube On", true));
+    layout.add (std::make_unique<Float> (juce::ParameterID { id::compThreshold, version }, "Dua Wox Tube Threshold",
                                          juce::NormalisableRange<float> (-48.0f, 0.0f, 0.1f), -18.0f,
                                          Attributes().withLabel ("dB").withStringFromValueFunction (formatDb)));
     // The stored value is the knob's travel (1..6, kept from 0.1); it reads
     // the ratio the tube really leans at as its knee begins (1:1 to about 2.3:1).
-    layout.add (std::make_unique<Float> (juce::ParameterID { id::compRatio, version }, "ADC Tube Ratio",
+    layout.add (std::make_unique<Float> (juce::ParameterID { id::compRatio, version }, "Dua Wox Tube Ratio",
                                          centredRange (1.0f, 6.0f, 2.5f, 0.01f), 1.0f,
                                          Attributes().withStringFromValueFunction ([] (float v, int)
                                                                                    { return juce::String (AdcCompressor::tubeRatioFor (v), 2) + ":1"; })
                                                      .withValueFromStringFunction ([] (const juce::String& text)
                                                                                    { return AdcCompressor::ratioKnobFor (text.getFloatValue()); })));
-    layout.add (std::make_unique<Float> (juce::ParameterID { id::compAttack, version }, "ADC Tube Attack",
+    layout.add (std::make_unique<Float> (juce::ParameterID { id::compAttack, version }, "Dua Wox Tube Attack",
                                          centredRange (1.0f, 80.0f, 12.0f, 0.01f), 12.0f,
                                          Attributes().withLabel ("ms").withStringFromValueFunction (formatMs)));
-    layout.add (std::make_unique<Float> (juce::ParameterID { id::compRelease, version }, "ADC Tube Release",
+    layout.add (std::make_unique<Float> (juce::ParameterID { id::compRelease, version }, "Dua Wox Tube Release",
                                          centredRange (20.0f, 400.0f, 80.0f, 0.1f), 60.0f,
                                          Attributes().withLabel ("ms").withStringFromValueFunction (formatMs)));
-    layout.add (std::make_unique<Bool> (juce::ParameterID { id::adcOptoOn, version3 }, "ADC Opto On", true));
-    layout.add (std::make_unique<Float> (juce::ParameterID { id::adcOptoReduction, version3 }, "ADC Opto Peak Reduction",
+    layout.add (std::make_unique<Bool> (juce::ParameterID { id::adcOptoOn, version3 }, "Dua Wox Opto On", true));
+    layout.add (std::make_unique<Float> (juce::ParameterID { id::adcOptoReduction, version3 }, "Dua Wox Opto Peak Reduction",
                                          juce::NormalisableRange<float> (0.0f, 1.0f, 0.001f), 0.0f, percentAttributes));
-    layout.add (std::make_unique<Bool> (juce::ParameterID { id::compMakeup, version }, "ADC Auto Gain", true));
-    layout.add (std::make_unique<Float> (juce::ParameterID { id::compMix, version }, "ADC Blend",
+    layout.add (std::make_unique<Bool> (juce::ParameterID { id::compMakeup, version }, "Dua Wox Auto Gain", true));
+    layout.add (std::make_unique<Float> (juce::ParameterID { id::compMix, version }, "Dua Wox Blend",
                                          juce::NormalisableRange<float> (0.0f, 1.0f, 0.001f), 1.0f, percentAttributes));
-    layout.add (std::make_unique<Float> (juce::ParameterID { id::compCotton, version }, "ADC Warmth",
+    layout.add (std::make_unique<Float> (juce::ParameterID { id::compCotton, version }, "Dua Wox Warmth",
                                          juce::NormalisableRange<float> (0.0f, 1.0f, 0.001f), 0.0f, percentAttributes));
 
     // Air

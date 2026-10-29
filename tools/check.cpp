@@ -267,16 +267,16 @@ namespace
         {
             juce::Graphics g (image);
 
-            const auto sans = juce::Typeface::createSystemTypefaceFor (LinenBinary::InterRegular_ttf, (size_t) LinenBinary::InterRegular_ttfSize);
-            const auto serif = juce::Typeface::createSystemTypefaceFor (LinenBinary::CormorantGaramondMedium_ttf,
-                                                                        (size_t) LinenBinary::CormorantGaramondMedium_ttfSize);
+            const auto sans = juce::Typeface::createSystemTypefaceFor (LinenBinary::ArchivoNarrowRegular_ttf, (size_t) LinenBinary::ArchivoNarrowRegular_ttfSize);
+            const auto display = juce::Typeface::createSystemTypefaceFor (LinenBinary::ArchivoExpandedSemiBold_ttf,
+                                                                        (size_t) LinenBinary::ArchivoExpandedSemiBold_ttfSize);
             const auto font = [] (const juce::Typeface::Ptr& face, float h) { return juce::Font (juce::FontOptions (face).withHeight (h)); };
 
             const juce::Colour paper (0xfff6f3ec), ink (0xff221e1c), champagne (0xffb08f55), cobalt (0xff1f4fff);
             g.fillAll (paper);
 
             g.setColour (ink);
-            g.setFont (font (serif, 34.0f));
+            g.setFont (font (display, 24.0f));
             g.drawText ("Linen, Clean preset: null (phase) test", left, 22, width - left - right, 44, juce::Justification::centredLeft);
             g.setColour (ink.withAlpha (0.6f));
             g.setFont (font (sans, 15.0f));
@@ -376,9 +376,9 @@ namespace
         juce::Image image (juce::Image::RGB, width, height, true, juce::SoftwareImageType());
         {
             juce::Graphics g (image);
-            const auto sans = juce::Typeface::createSystemTypefaceFor (LinenBinary::InterRegular_ttf, (size_t) LinenBinary::InterRegular_ttfSize);
-            const auto serif = juce::Typeface::createSystemTypefaceFor (LinenBinary::CormorantGaramondMedium_ttf,
-                                                                        (size_t) LinenBinary::CormorantGaramondMedium_ttfSize);
+            const auto sans = juce::Typeface::createSystemTypefaceFor (LinenBinary::ArchivoNarrowRegular_ttf, (size_t) LinenBinary::ArchivoNarrowRegular_ttfSize);
+            const auto display = juce::Typeface::createSystemTypefaceFor (LinenBinary::ArchivoExpandedSemiBold_ttf,
+                                                                        (size_t) LinenBinary::ArchivoExpandedSemiBold_ttfSize);
             const auto font = [] (const juce::Typeface::Ptr& face, float h) { return juce::Font (juce::FontOptions (face).withHeight (h)); };
             const juce::Colour paper (0xfff6f3ec), ink (0xff221e1c), well (0xffebe4d8), champagne (0xffc8a96e);
             const juce::Colour lineColours[] { juce::Colour (0xffd1493f), juce::Colour (0xffb08f55), juce::Colour (0xff1f4fff),
@@ -386,7 +386,7 @@ namespace
 
             g.fillAll (paper);
             g.setColour (ink);
-            g.setFont (font (serif, 36.0f));
+            g.setFont (font (display, 26.0f));
             g.drawText ("Linen: is the analog warmth still there?", 70, 22, width - 140, 46, juce::Justification::centredLeft);
             g.setColour (ink.withAlpha (0.62f));
             g.setFont (font (sans, 15.0f));
@@ -466,7 +466,7 @@ namespace
             // Right: each preset's harmonic fingerprint on a -12 dBFS note.
             const float px = 820.0f, pw = 620.0f;
             g.setColour (ink);
-            g.setFont (font (serif, 24.0f));
+            g.setFont (font (display, 17.0f));
             g.drawText ("Harmonic fingerprint, this build", (int) px, 140, (int) pw, 30, juce::Justification::centredLeft);
             g.setColour (ink.withAlpha (0.62f));
             g.setFont (font (sans, 13.0f));
@@ -600,10 +600,10 @@ int main (int argc, char** argv)
         auto plugin = load (description, 48000.0, 2);
         const std::pair<const char*, float> settings[] {
             { "Tone Low Shelf Gain", 0.0f }, { "Tone High Shelf Gain", 1.0f }, { "Preamp Drive", 1.0f }, { "EQ Low Gain", 1.0f },
-            { "EQ Mid Gain", 0.0f }, { "EQ High Gain (12 kHz)", 1.0f }, { "De-harsh Depth", 1.0f }, { "ADC Tube Ratio", 1.0f },
-            { "ADC Tube Threshold", 0.0f }, { "ADC Opto Peak Reduction", 1.0f }, { "ADC Warmth", 1.0f }, { "Air", 1.0f },
+            { "EQ Mid Gain", 0.0f }, { "EQ High Gain (12 kHz)", 1.0f }, { "De-harsh Depth", 1.0f }, { "Dua Wox Tube Ratio", 1.0f },
+            { "Dua Wox Tube Threshold", 0.0f }, { "Dua Wox Opto Peak Reduction", 1.0f }, { "Dua Wox Warmth", 1.0f }, { "Air", 1.0f },
             { "Air De-ess", 1.0f }, { "Silk", 1.0f },
-            { "Tone On", 0.0f }, { "Preamp On", 0.0f }, { "De-harsh On", 0.0f }, { "ADC On", 0.0f }, { "Air On", 0.0f } };
+            { "Tone On", 0.0f }, { "Preamp On", 0.0f }, { "De-harsh On", 0.0f }, { "Dua Wox On", 0.0f }, { "Air On", 0.0f } };
         bool found = true;
         for (const auto& [name, value] : settings)
         {

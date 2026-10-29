@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.22)
 
-project(Linen VERSION 0.3.0 LANGUAGES C CXX)
+project(Linen VERSION 0.4.0 LANGUAGES C CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -53,11 +53,10 @@ set(LINEN_DSP_SOURCES
 juce_add_binary_data(LinenAssets
     NAMESPACE LinenBinary
     SOURCES
-        assets/fonts/CormorantGaramond-Light.ttf
-        assets/fonts/CormorantGaramond-Medium.ttf
-        assets/fonts/CormorantGaramond-Italic.ttf
-        assets/fonts/Inter-Regular.ttf
-        assets/fonts/Inter-Medium.ttf)
+        assets/fonts/Archivo-ExpandedSemiBold.ttf
+        assets/fonts/Archivo-ExpandedMedium.ttf
+        assets/fonts/Archivo-NarrowRegular.ttf
+        assets/fonts/Archivo-NarrowMedium.ttf)
 
 set(LINEN_COMMON_DEFINITIONS
     JUCE_WEB_BROWSER=0

@@ -23,19 +23,17 @@ namespace
 }
 
 Typefaces::Typefaces()
-    : serifLight  (load (LinenBinary::CormorantGaramondLight_ttf,  LinenBinary::CormorantGaramondLight_ttfSize)),
-      serifMedium (load (LinenBinary::CormorantGaramondMedium_ttf, LinenBinary::CormorantGaramondMedium_ttfSize)),
-      serifItalic (load (LinenBinary::CormorantGaramondItalic_ttf, LinenBinary::CormorantGaramondItalic_ttfSize)),
-      sans        (load (LinenBinary::InterRegular_ttf,            LinenBinary::InterRegular_ttfSize)),
-      sansMedium  (load (LinenBinary::InterMedium_ttf,             LinenBinary::InterMedium_ttfSize))
+    : display       (load (LinenBinary::ArchivoExpandedSemiBold_ttf, LinenBinary::ArchivoExpandedSemiBold_ttfSize)),
+      displayMedium (load (LinenBinary::ArchivoExpandedMedium_ttf,   LinenBinary::ArchivoExpandedMedium_ttfSize)),
+      sans          (load (LinenBinary::ArchivoNarrowRegular_ttf,    LinenBinary::ArchivoNarrowRegular_ttfSize)),
+      sansMedium    (load (LinenBinary::ArchivoNarrowMedium_ttf,     LinenBinary::ArchivoNarrowMedium_ttfSize))
 {
 }
 
 namespace fonts
 {
-    juce::Font serif (float h, float k)       { return make (juce::SharedResourcePointer<Typefaces>()->serifLight, h, k); }
-    juce::Font serifMedium (float h, float k) { return make (juce::SharedResourcePointer<Typefaces>()->serifMedium, h, k); }
-    juce::Font serifItalic (float h, float k) { return make (juce::SharedResourcePointer<Typefaces>()->serifItalic, h, k); }
+    juce::Font display (float h, float k)       { return make (juce::SharedResourcePointer<Typefaces>()->display, h, k); }
+    juce::Font displayMedium (float h, float k) { return make (juce::SharedResourcePointer<Typefaces>()->displayMedium, h, k); }
     juce::Font sans (float h, float k)        { return make (juce::SharedResourcePointer<Typefaces>()->sans, h, k); }
     juce::Font sansMedium (float h, float k)  { return make (juce::SharedResourcePointer<Typefaces>()->sansMedium, h, k); }
 }

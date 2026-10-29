@@ -301,7 +301,7 @@ AssistResult AutoAssist::analyse (const float* x, int n, double sr)
         did.add ("low shelf " + juce::String (r.toneLowGainDb, 1) + " dB under " + juce::String (juce::roundToInt (r.toneLowHz)) + " Hz");
     if (r.lowGainDb > 0.0f) did.add ("low lift +" + juce::String (r.lowGainDb, 1) + " dB");
     if (! juce::exactlyEqual (r.highGainDb, 0.0f)) did.add ("12k " + juce::String (r.highGainDb, 1) + " dB");
-    did.add ("ADC tube " + juce::String (r.compRatio, 1) + ":1 at " + juce::String (r.compThresholdDb, 1) + " dB, opto "
+    did.add ("Dua Wox tube " + juce::String (r.compRatio, 1) + ":1 at " + juce::String (r.compThresholdDb, 1) + " dB, opto "
              + juce::String (juce::roundToInt (r.optoReduction * 100.0f)) + "%");
     did.add ("de-ess " + juce::String (juce::roundToInt (r.airDeEss * 100.0f)) + "%");
 

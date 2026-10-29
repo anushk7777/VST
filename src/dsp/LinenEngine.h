@@ -50,7 +50,7 @@ struct EngineParams
 
 /** The whole Linen signal chain, independent of the plugin wrapper.
 
-    Input gain → Tone → Preamp → EQ → Pain → De-harsh → ADC comp → Air → Output gain → Mix
+    Input gain → Tone → Preamp → EQ → Pain → De-harsh → Dua Wox → Air → Output gain → Mix
 
     The dry signal for Mix is taken before the input gain and delayed by the
     chain's latency, so dry and wet stay sample-aligned at any Mix setting.

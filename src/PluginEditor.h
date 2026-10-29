@@ -100,7 +100,7 @@ private:
         linen::LinenKnob lowGain { "Low", 42.0f }, midGain { "Mid", 42.0f }, highGain { "High 12k", 42.0f };
         linen::LinenStepper lowFreq, midFreq;
 
-        // The ADC compressor: TUBE (the catch) | VU | OPTO (the leveller), Warmth and Blend shared.
+        // The Dua Wox compressor: TUBE (the catch) | VU | OPTO (the leveller), Warmth and Blend shared.
         linen::LinenKnob threshold { "Thresh", 40.0f }, ratio { "Ratio", 40.0f }, compAttack { "Attack", 40.0f },
                          compRelease { "Release", 40.0f };
         linen::LinenKnob optoReduction { "Peak red.", 64.0f };
@@ -125,7 +125,7 @@ private:
         // A bat-handle switch for each section.
         linen::LinenToggle tonePower, preampPower, compPower, deharshPower, airPower;
 
-        // Jewel lamps, one per section and one per ADC slot, and the brand jewel.
+        // Jewel lamps, one per section and one per Dua Wox slot, and the brand jewel.
         linen::LinenLamp toneLamp, preampLamp, compLamp, deharshLamp, airLamp, outputLamp, tubeLamp, optoLamp, brandLamp;
 
         std::vector<std::unique_ptr<SliderAttachment>> sliderAttachments;

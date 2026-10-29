@@ -207,6 +207,52 @@ public:
     }
 };
 
+class LoomTests final : public juce::UnitTest
+{
+public:
+    LoomTests() : juce::UnitTest ("Silk loom", "Linen") {}
+
+    void runTest() override
+    {
+        // A bright vowel with a harsh 3.4 kHz resonance for De-harsh to cut.
+        auto vowel = brightVowel (96000, -16.0f);
+        addSine (vowel, 3400.0, -14.0f);
+        juce::AudioBuffer<float> stereo (2, vowel.getNumSamples());
+        for (int ch = 0; ch < 2; ++ch)
+            stereo.copyFrom (ch, 0, vowel, 0, 0, vowel.getNumSamples());
+
+        const auto render = [&stereo] (float depth, float loom)
+        {
+            EngineParams p;
+            p.comp.thresholdDb = -18.0f;
+            p.deharsh.depth = depth;
+            p.air.amount = 0.6f;
+            p.air.loom = loom;
+            Engine engine;
+            engine.setParams (p);
+            engine.prepare (sr, block, 2);
+            return runInBlocks (engine, stereo, block);
+        };
+
+        beginTest ("Where De-harsh cuts, the loom gives the top back as sparkle");
+        {
+            const auto woven = render (10.0f, 1.0f), plain = render (10.0f, 0.0f);
+            const float gain = bandDb (woven, 12000, 16000, 48000, 48000) - bandDb (plain, 12000, 16000, 48000, 48000);
+            const float body = bandDb (woven, 200, 1500, 48000, 48000) - bandDb (plain, 200, 1500, 48000, 48000);
+            logMessage ("sparkle above 12 kHz +" + juce::String (gain, 2) + " dB, body " + juce::String (body, 3) + " dB");
+            expectGreaterThan (gain, 0.3f);
+            expectWithinAbsoluteError (body, 0.0f, 0.05f);
+        }
+
+        beginTest ("Without De-harsh cutting, the loom changes nothing, bit for bit");
+        {
+            const auto woven = render (0.0f, 1.0f), plain = render (0.0f, 0.0f);
+            expect (identicalAfter (plain, woven, 0));
+        }
+    }
+};
+
 static AirTests airTests;
+static LoomTests loomTests;
 
 } // namespace linen::test

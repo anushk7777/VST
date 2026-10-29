@@ -12,6 +12,7 @@ struct AirParams
     float amount = 0.0f;   // 0..1: up to +6 dB of air above ~10 kHz, plus sparkle
     float deEss = 0.0f;    // 0..1: up to -6 dB on S and T sounds
     float scorch = 0.0f;   // 0..1 (from Pain): damp the air, darker and dustier, like old tape
+    float loom = 0.5f;     // 0..1: give back as clean sparkle the top that De-harsh cut (Silk loom)
 };
 
 /** Air that never brings the esses back.
@@ -30,6 +31,9 @@ public:
     void setParams (const AirParams& p) { params = p; }
     void process (juce::AudioBuffer<float>& buffer);
 
+    /** Silk loom: how deep De-harsh is cutting above 2 kHz right now (dB). */
+    void setHarshnessCut (float cutDb) noexcept { harshCutDb = cutDb; }
+
     /** How strongly the current sound reads as sibilance, 0..1 (for the GUI). */
     float getSibilance() const noexcept { return sibilanceMeter.load (std::memory_order_relaxed); }
 
@@ -39,6 +43,7 @@ private:
     double sampleRate = 48000.0;
     int numChannels = 0;
     AirParams params;
+    float harshCutDb = 0.0f;
 
     // Detector (mono).
     Biquad vowelHp, vowelLp, sibHp, sibLp;

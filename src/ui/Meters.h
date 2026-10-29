@@ -29,7 +29,7 @@ private:
     juce::VBlankAttachment vblank;
 };
 
-/** The ADC's needle meter: a backlit cream face with the classic VU scale,
+/** Dua Wox's needle meter: a backlit cream face with the classic VU scale,
     the needle resting at 0 and swinging left as the compressor holds the
     voice, with VU ballistics (about 300 ms to settle). The backlight warms
     toward cobalt while it works, and two LED bars under the face show how the

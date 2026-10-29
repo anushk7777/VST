@@ -17,6 +17,17 @@ namespace
     constexpr float ironAtFull = 0.41f, ironRangeDb = 13.0f;
     constexpr float outputIronShare = 0.5f;     // the output iron is driven half as hard
 
+    // The Cotton iron: the input transformer's leftover magnetism. A trace at
+    // the house drive (its budget leaves no room), growing past 30% Drive so
+    // pushed lows turn round and 2nd-heavy while the top stays glassy.
+    constexpr float remanenceHouse = 0.012f, remanencePushed = 0.15f;
+
+    float remanenceFor (float drive01)
+    {
+        const float t = juce::jlimit (0.0f, 1.0f, (drive01 - 0.3f) / 0.7f);
+        return remanenceHouse + remanencePushed * t * t * (3.0f - 2.0f * t);
+    }
+
     // Class-A bias: leans from quiet to bloom as the voice nears a belt.
     constexpr float biasQuiet = 0.10f, biasBloom = 0.15f, beltPeak = 0.5f;
 
@@ -39,13 +50,17 @@ namespace
     }
 }
 
-float Preamp::Transformer::process (float x, float fluxGain) noexcept
+float Preamp::Transformer::process (float x, float fluxGain, float remanence) noexcept
 {
     // Leaky integrator → saturate the flux → matching differentiator.
     // Doubles keep the differentiator from amplifying rounding noise.
-    const double gain = fluxGain;
+    // Remanence offsets the core's operating point, so it saturates a little
+    // earlier one way than the other: even harmonics, and only where the flux
+    // is large, which is in the lows (the integrator's flux falls with frequency).
+    const double gain = fluxGain, r = remanence;
     const double f = (double) flux * (1.0 - leak) + (double) k * x;
-    const double saturated = soft (f * gain) / gain;
+    const double saturated = r > 0.0 ? (soft (f * gain + r) - soft (r)) / (gain * softSlope ((float) r))
+                                     : soft (f * gain) / gain;
     const double y = (saturated - (double) lastSaturated * (1.0 - leak)) / k;
 
     flux = (float) f;
@@ -89,6 +104,7 @@ void Preamp::prepare (double newSampleRate, int maxBlockSize, int newNumChannels
     driveRamp.assign ((size_t) maxBlockSize, 0.0f);
     classARamp.assign ((size_t) maxBlockSize, 0.0f);
     ironRamp.assign ((size_t) maxBlockSize, 0.0f);
+    remanenceRamp.assign ((size_t) maxBlockSize, 0.0f);
 
     const juce::dsp::ProcessSpec spec { sampleRate, (juce::uint32) maxBlockSize, (juce::uint32) juce::jmax (1, numChannels) };
     dryDelay.prepare (spec);
@@ -130,6 +146,7 @@ void Preamp::process (juce::AudioBuffer<float>& buffer)
         driveRamp[(size_t) i] = d;
         classARamp[(size_t) i] = lawGain (d, classAAtFull, classARangeDb);
         ironRamp[(size_t) i] = lawGain (d, ironAtFull, ironRangeDb);
+        remanenceRamp[(size_t) i] = remanenceFor (d);
     }
 
     // Latency-matched copy of the input, for the Drive-0 bypass blend.
@@ -154,14 +171,17 @@ void Preamp::process (juce::AudioBuffer<float>& buffer)
         auto& c = channels[(size_t) ch];
         auto* x = up.getChannelPointer ((size_t) ch);
 
-        float bias = biasQuiet, biasOffset = 0.0f, biasNorm = 1.0f, ga = 1.0f, iron = 1.0f;
+        float bias = biasQuiet, biasOffset = 0.0f, biasNorm = 1.0f, ga = 1.0f, iron = 1.0f, remanence = 0.0f;
 
         for (int i = 0; i < (int) up.getNumSamples(); ++i)
         {
             if (i % factor == 0)
+            {
                 iron = ironRamp[(size_t) (i / factor)];
+                remanence = remanenceRamp[(size_t) (i / factor)];
+            }
 
-            float s = c.inputIron.process (x[i], iron);
+            float s = c.inputIron.process (x[i], iron, remanence);
 
             // Class-A stage: bias leans further as the voice gets louder. The
             // bias only moves at envelope speed, so refresh it once per input sample.

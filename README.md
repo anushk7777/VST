@@ -23,12 +23,14 @@ The full plan and the status of each phase are in [docs/PLAN.md](docs/PLAN.md).
 | 1 | Scaffold, CI, Input/Mix/Output, latency-matched dry path, the Linen look | done |
 | 2 | De-harsh (resonance suppressor) and its spectrum display | done |
 | 3 | 1073-style preamp and EQ | done |
-| 4 | Silk compressor (with Cotton) and Air | done |
+| 4 | Compressor and Air (now Dua Wox, 0.3) | done |
 | 5 | Silk macro and presets | done |
 | 5b | Pain (vocal distress engine) | done |
 | 6 | AI Listen button | done |
 | 6b | Premium UI: linen + cobalt lights, jewel lamps, halos, backlit display | done |
 | 5c | Clean by default (bit-exact null, checked on the built VST3), clean drive calibration, Tone shelves before the preamp, section power switches, Null button | done |
+| 0.3 | Dua Wox compressor (TUBE + OPTO), boutique console UI (knurled knobs, LED rings, bat toggles, needle VU), warmth report | done |
+| 0.4 | Signature circuits (Weave, Silk loom, Cotton iron, Breath gate), Archivo type | done |
 | 7 | Neural preamp (needs real 1073 recordings) | planned |
 
 ## Install in FL Studio (Windows 11)
@@ -41,11 +43,11 @@ The full plan and the status of each phase are in [docs/PLAN.md](docs/PLAN.md).
 
 **Linen-Standalone-Windows** is the same thing as a standalone app, for a quick look without FL Studio.
 
-The version number is at the bottom right of the window (this one is **v0.2.0**).
+The version number is at the bottom right of the window (this one is **v0.4.0**).
 
 ## Clean, and the phase test
 
-Linen opens on the **Clean** preset: every section is in, but every setting is neutral (Drive 0, Depth 0, Ratio 1:1, Cotton 0, Air 0, De-ess 0, all EQ and shelf gains 0 dB, Silk 50%, Pain 0). The output is then exactly the input, delayed by Linen's latency.
+Linen opens on the **Clean** preset: every section is in, but every setting is neutral (Drive 0, Depth 0, Ratio 1:1, Peak red. 0, Warmth 0, Air 0, De-ess 0, all EQ and shelf gains 0 dB, Silk 50%, Pain 0). The output is then exactly the input, delayed by Linen's latency.
 
 **Prove it yourself in FL Studio:**
 - **The NULL button** (Output section) plays Linen's output minus your untouched vocal, sample-aligned. On Clean your meters read silence (-inf). On any other setting you hear exactly what Linen adds or takes away, distortion included.
@@ -76,7 +78,7 @@ Press **AI LISTEN** (under the preset box), then play your vocal. The lamp ring 
 - the Tone low shelf (just under the sung notes, or up in the mud for a muddy voice);
 - preamp drive, and the low, mid and 12k EQ;
 - De-harsh depth;
-- compressor threshold, ratio and Cotton;
+- Dua Wox threshold, ratio, Peak red. and Warmth;
 - Air and De-ess.
 
 The display then tells you in plain words what it heard and what it changed. Silk and Pain stay where you put them, and the sections it sets are switched on. Everything runs locally; click the button again to stop.
@@ -98,10 +100,10 @@ The knob burns crimson and the silk veil trembles as stress rises. The presets *
 - A **jewel lamp** beside each section title glows cobalt as that module works:
   - Preamp: drive;
   - De-harsh: cuts;
-  - Silk comp: gain reduction;
+  - Dua Wox: gain reduction (and a lamp per TUBE and OPTO cell);
   - Air: air, flaring on every S;
   - Output: signal.
-- Switches carry a small cobalt LED when on, and each section's power button lights cobalt while it is in.
+- Each knob's LED ring shows its setting. Pills carry a small cobalt LED when on; each section's chrome bat-handle toggle points up while it is in.
 - Silk's halo breathes with the vocal.
 - The display is backlit, and turns cobalt while AI Listen is listening.
 
@@ -111,7 +113,7 @@ The knob burns crimson and the silk veil trembles as stress rises. The presets *
 - **Turning it up** adds the following together, each on its own curve in the order an engineer would reach for them, while an automatic trim keeps the level within 0.5 dB:
   - preamp drive first;
   - De-harsh depth across the whole travel;
-  - compression (threshold and ratio) and Cotton in the middle;
+  - compression (threshold, ratio, Peak red.), Warmth and Weave in the middle;
   - Air last.
 - **Turning it down** pulls everything back toward transparent. From Clean there is nothing to pull back, so below 50% it changes nothing.
 - Sections that are switched off are left alone.
@@ -121,11 +123,11 @@ The knob burns crimson and the silk veil trembles as stress rises. The presets *
 | Preset | Character | Distortion on a -6 dBFS note |
 |---|---|---|
 | Clean | Untouched: bit for bit. The default. | none |
-| House Silk | Warm, smooth, gently held. | about -51 dB |
-| Velvet Pop Lead | Polished, silky, forward modern pop lead. Its Tone shelves take a little weight out below 450 Hz and add a little presence from 3 kHz (the Pro-Q moves it was first paired with). | about -48 dB |
-| Breathy Intimate | Close and airy; the breaths open up, the esses stay soft. | about -53 dB |
-| Warm & Close | More preamp and Cotton: round, thick, cushioned. | about -46 dB |
-| Transparent Polish | Barely there: de-harshed, lightly held, a touch of air. | none |
+| House Silk | Warm, smooth, gently held. | about -49 dB |
+| Velvet Pop Lead | Polished, silky, forward modern pop lead. Its Tone shelves take a little weight out below 450 Hz and add a little presence from 3 kHz (the Pro-Q moves it was first paired with). | about -47 dB |
+| Breathy Intimate | Close and airy; the breaths open up, the esses stay soft. | about -50 dB |
+| Warm & Close | More preamp and Warmth: round, thick, cushioned. | about -46 dB |
+| Transparent Polish | Barely there: de-harshed, lightly held, a touch of air. | about -64 dB |
 | De-harsh Only | Just the resonance suppressor. | none |
 | Velvet Ache | Warm, intimate R&B/pop with emotional bite (Silk 65%, Pain 35%). | cracks when pushed (Pain) |
 | Torn Linen | Raw, overdriven, heart-on-sleeve chorus vocal (Silk 40%, Pain 80%). | cracks when pushed (Pain) |
@@ -156,31 +158,30 @@ The preamp is modelled on the behaviour of a classic 1073-style class-A channel:
 
 Click a frequency selector for its list, or scroll/drag over it to step.
 
-## Using Silk comp and Air
+## Using Dua Wox and Air
 
-**Silk comp** is built to be felt, not heard:
-- RMS detection with a slight lean toward the upper mids, as an optical cell has.
-- A wide 10 dB soft knee.
-- A 100 Hz sidechain high-pass, so plosives and boom don't pump it.
-- A two-stage optical release. Half of the gain reduction lets go at the Release time. The other half lets go slowly, between 0.4 s and 5 s, and more slowly the longer and harder it has been holding the voice, like an optical cell's memory. Heavy, sustained compression therefore never pumps.
+**Dua Wox** is Linen's compressor: two soft cells, built from how the classic variable-mu, diode-bridge and optical units behave (no copied circuits), in one feedback loop. Both hear the finished output, so they share the work instead of stacking up into a squash.
 
-**Cotton** is Linen's signature texture. It only acts while the compressor is working (Ratio above 1:1), and in proportion to how hard:
-- a touch of low-mid warmth;
-- a softer top;
-- a whisper of diode-bridge-style harmonics (mostly 2nd, run at 2× oversampling): about -50 dB even at 100%.
-
-Loud, belted lines turn round, warm and cushioned. Quiet, breathy lines are untouched, and that's where Air opens them up. At 0 the compressor is a clean gain.
+- **TUBE (the catch):** a 12 dB-wide knee and a ratio that firms up gently on the loudest notes, never past about 3:1. Its auto release lets a single peak go in about 0.16 s and a long loud line over a few seconds.
+- **OPTO (the leveller):** a light-cell model. About 10 ms attack; half lets go in about 60 ms, the rest over 0.5–5 s, slower after long held phrases (the cell's memory). Natural knee, never past 3:1.
+- **Warmth:** a tube line stage (mostly 2nd harmonic, at hardware levels: House Silk is about 0.3% on a loud note), plus a touch of low-mid bloom and a softer top while it holds the voice.
+- **Weave:** the longer the singer pushes, the further the Warmth stage leans, so the colour deepens a little over seconds and eases back when the line relaxes.
+- **Breath gate:** breaths and consonants hold both cells where they are, so breaths stay intimate instead of being squashed or pulled up.
+- A 100 Hz sidechain high-pass, so plosives and boom don't pump it, and a ripple-free detector, so phrase onsets aren't over-compressed.
 
 | Control | What it does |
 |---|---|
-| **Cotton** | The texture while compressing. 0 = clean; 50% = the house sound; 100% = plush. |
-| **Threshold / Ratio** | Where it starts and how firmly it holds. 1:1 is off. A ratio of 1.5–2.5 is invisible; 4 and above is firm. |
-| **Attack** | Slower attack lets consonants through for a natural edge. |
-| **Release** | The fast half of the release. The slow half follows the singing by itself. |
+| **TUBE / OPTO switches** | Run either cell alone. Out is an exact bypass. |
+| **Thresh / Ratio** | Where the TUBE leans in and how firmly (the readout is the real ratio, 1:1 to about 2.3:1). |
+| **Attack / Release** | The TUBE's attack and its fast recovery. |
+| **Peak red.** | How hard the OPTO levels. 0 = off. |
+| **Warmth** | The line stage's colour. 0 = clean. |
 | **Blend** | Parallel compression: mix in the uncompressed voice. |
-| **Auto gain** | Makes up for the typical gain reduction. |
+| **Auto gain** | Gives back most of what Dua Wox takes. |
 
-**Air** opens a 10 kHz shelf with a little extra lift on quiet breaths, and adds a soft even-harmonic sparkle (run at 2× oversampling so it never aliases). A sibilance detector compares the top band with the vowel band. When an S or T makes the top outweigh the vowel, Air closes, and **De-ess** turns it into a gentle cut. The small light next to "Air" glows on every S.
+The needle VU shows the total gain reduction; the two LED bars under it show how the TUBE and OPTO share it. With Ratio 1:1, Peak red. 0 and Warmth 0, Dua Wox passes the voice bit for bit.
+
+**Air** opens a 10 kHz shelf with a little extra lift on quiet breaths, and adds a soft even-harmonic sparkle (run at 2× oversampling so it never aliases). Its **Silk loom** listens to De-harsh: where harshness was cut from the top, the sparkle grows, so the voice stays open without the fizz coming back. A sibilance detector compares the top band with the vowel band. When an S or T makes the top outweigh the vowel, Air closes, and **De-ess** turns it into a gentle cut. The small light next to "Air" glows on every S.
 
 ## Using De-harsh
 
@@ -233,6 +234,6 @@ build/LinenCheck_artefacts/Release/LinenCheck build/Linen_artefacts/Release/VST3
 | `src/ui/` | Look and feel: linen, champagne and espresso, with cobalt light (`Palette.h`); linen backdrop, cards, jewel lamps (`Lights.*`), display. |
 | `tests/` | DSP unit tests. |
 | `tools/render.cpp` | Offline render CLI. |
-| `tools/check.cpp` | Hosts the built VST3: bit-exact null test of Clean, distortion by preset (runs in CI). |
+| `tools/check.cpp` | Hosts the built VST3: bit-exact null test of Clean, distortion by preset, `--warmth` report against older builds (runs in CI). |
 | `tools/snapshot.cpp` | Dev tool: renders the window to PNG while a test vocal plays (`-DLINEN_BUILD_SNAPSHOT=ON`). |
-| `assets/fonts/` | Cormorant Garamond and Inter, both under the SIL Open Font License (texts included). |
+| `assets/fonts/` | Archivo (Expanded for titles, SemiCondensed for labels), cut from its variable font; SIL Open Font License (text included). |

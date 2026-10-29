@@ -373,6 +373,74 @@ public:
             expectLessThan (pushed.thd, -45.0, "even pushed, inside the budget");
         }
 
+        beginTest ("Weave: the colour deepens the longer the voice is held down, and only with Weave");
+        {
+            const auto growth = [] (float weave)
+            {
+                auto p = house();
+                p.thresholdDb = -24.0f;
+                p.warmth = 1.0f;
+                p.weave = weave;
+                AdcCompressor comp;
+                comp.setParams (p);
+                comp.prepare (sr, block, 1);
+                auto tone = sineWave (1000.0, -12.0f, 48000 * 7);
+                runBlocks (comp, tone);
+                const auto h2 = [&tone] (int start) { return toneDb (tone, 2000.0, start, 16384) - toneDb (tone, 1000.0, start, 16384); };
+                return std::pair { h2 (19200), h2 (48000 * 6) };
+            };
+
+            const auto [early1, late1] = growth (1.0f);
+            const auto [early0, late0] = growth (0.0f);
+            logMessage ("H2 with Weave: " + juce::String (early1, 1) + " dB at 0.4 s, " + juce::String (late1, 1)
+                        + " dB at 6 s; without: " + juce::String (early0, 1) + " -> " + juce::String (late0, 1) + " dB");
+            expectGreaterThan (late1 - early1, 1.5, "deepens with time");
+            expectWithinAbsoluteError (late0 - early0, 0.0, 0.5, "steady without Weave");
+            expectLessThan (late1, -45.0, "still inside the budget");
+        }
+
+        beginTest ("Breath gate: a breath or an S is not pulled down like a sung vowel");
+        {
+            const auto peakReduction = [] (bool breathy)
+            {
+                auto p = tube (-30.0f, 3.0f);
+                p.optoReduction = 0.5f;
+                AdcCompressor comp;
+                comp.setParams (p);
+                comp.prepare (sr, block, 1);
+
+                const int from = 24000, length = 7200, total = 48000;   // 150 ms
+                juce::AudioBuffer<float> audio (1, total);
+                audio.clear();
+                if (breathy)
+                {
+                    auto hiss = whiteNoise (1, total, 1.0f, 9);
+                    Biquad hp, lp;
+                    hp.c = Biquad::Coeffs::highPass (sr, 5000.0, 0.707);
+                    lp.c = Biquad::Coeffs::lowPass (sr, 12000.0, 0.707);
+                    for (int i = 0; i < total; ++i)
+                        audio.setSample (0, i, lp.process (hp.process (hiss.getSample (0, i))));
+                }
+                else
+                {
+                    audio = sineWave (700.0, 0.0f, total);
+                }
+                // Same level (-16 dBFS RMS), only during the burst.
+                const float rms = audio.getRMSLevel (0, from, length);
+                audio.applyGain (juce::Decibels::decibelsToGain (-16.0f) / rms);
+                audio.clear (0, from);
+                audio.clear (from + length, total - from - length);
+
+                const auto trace = meterTrace (comp, audio, [] (const AdcCompressor& c) { return c.getGainReductionDb(); });
+                return *std::max_element (trace.begin(), trace.end());
+            };
+
+            const float vowel = peakReduction (false), breath = peakReduction (true);
+            logMessage ("150 ms at -16 dBFS RMS: vowel " + juce::String (vowel, 1) + " dB, breath/S " + juce::String (breath, 1) + " dB of reduction");
+            expectGreaterThan (vowel, 3.0f);
+            expectLessThan (breath, 0.5f * vowel);
+        }
+
         beginTest ("Warmth: loud lines turn warmer and softer on top");
         {
             const auto shape = [] (float warmth)
@@ -383,7 +451,13 @@ public:
                 AdcCompressor comp;
                 comp.setParams (p);
                 comp.prepare (sr, block, 1);
-                auto noise = whiteNoise (1, 48000 * 2, 0.4f, 4);
+                // Voice-like noise (rolled off above 6 kHz), so the breath gate leaves it alone.
+                auto noise = whiteNoise (1, 48000 * 2, 0.6f, 4);
+                Biquad lp1, lp2;
+                lp1.c = Biquad::Coeffs::lowPass (sr, 6000.0, 0.54);
+                lp2.c = Biquad::Coeffs::lowPass (sr, 6000.0, 1.31);
+                for (int i = 0; i < noise.getNumSamples(); ++i)
+                    noise.setSample (0, i, lp2.process (lp1.process (noise.getSample (0, i))));
                 runBlocks (comp, noise);
                 return std::pair { bandDb (noise, 220, 340) - bandDb (noise, 900, 1200), bandDb (noise, 11000, 15000) - bandDb (noise, 900, 1200) };
             };

@@ -197,8 +197,8 @@ void LinenVuMeter::paint (juce::Graphics& g)
 
         // Legend.
         g.setColour (vuInk);
-        g.setFont (fonts::serifMedium (15.0f, 0.12f));
-        g.drawText ("ADC", juce::Rectangle<float> (face.getWidth(), 16.0f).withCentre ({ face.getCentreX(), face.getY() + face.getHeight() * 0.6f }),
+        g.setFont (fonts::display (11.0f, 0.16f));
+        g.drawText ("DUA WOX", juce::Rectangle<float> (face.getWidth(), 16.0f).withCentre ({ face.getCentreX(), face.getY() + face.getHeight() * 0.6f }),
                     juce::Justification::centred, false);
         g.setColour (vuInk.withAlpha (0.6f));
         g.setFont (fonts::sans (6.5f, 0.22f));
@@ -219,7 +219,7 @@ void LinenVuMeter::paint (juce::Graphics& g)
         g.fillEllipse (juce::Rectangle<float> (2.0f * plateR, 2.0f * plateR).withCentre (pivot));
         g.setColour (champagne.withAlpha (0.8f));
         g.setFont (fonts::sans (5.5f, 0.3f));
-        g.drawText ("ANUSHK DUA", juce::Rectangle<float> (face.getWidth(), 8.0f).withCentre ({ pivot.x, face.getBottom() - 6.0f }),
+        g.drawText ("LINEN", juce::Rectangle<float> (face.getWidth(), 8.0f).withCentre ({ pivot.x, face.getBottom() - 6.0f }),
                     juce::Justification::centred, false);
 
         // Glass: a soft sheen across the top left, and the face's inner shadow.

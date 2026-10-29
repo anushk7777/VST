@@ -104,7 +104,10 @@ void Air::updateShelf()
     shelfDb = amount * open * (maxAirDb + maxBreathLiftDb * breath) * (1.0f - 0.6f * scorch)
             - juce::jlimit (0.0f, 1.0f, params.deEss) * maxDeEssDb * sibilance
             - 2.5f * scorch;
-    exciterGain = amount * open * maxExciter * (1.0f - 0.7f * scorch);
+    // Silk loom: where De-harsh cut the top, the sparkle grows (up to double at
+    // 6 dB of cut), so the voice stays open without the fizz coming back.
+    const float woven = juce::jlimit (0.0f, 1.0f, params.loom) * juce::jlimit (0.0f, 1.0f, harshCutDb / 6.0f);
+    exciterGain = amount * open * maxExciter * (1.0f - 0.7f * scorch) * (1.0f + woven);
 
     const auto c = std::abs (shelfDb) < 0.001f ? Biquad::Coeffs::identity()
                                                : Biquad::Coeffs::highShelf (sampleRate, shelfHz, 0.6, shelfDb);

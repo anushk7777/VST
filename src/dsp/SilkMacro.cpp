@@ -7,7 +7,7 @@ namespace linen
 namespace
 {
     // Level trim, measured on a sung phrase (tests/SilkTests.cpp): a vocal's
-    // loud notes reach the compressor at about -10 dB peak. The ADC's auto
+    // loud notes reach the compressor at about -10 dB peak. Dua Wox's auto
     // gain gives back most of what extra compression takes; the trim covers
     // a share of the rest.
     constexpr float vocalPeakDb = -10.0f;
@@ -62,10 +62,14 @@ EngineParams SilkMacro::apply (const EngineParams& user, float silk)
         p.comp.ratio = juce::jlimit (1.0f, 6.0f, user.comp.ratio + squeeze);
         p.comp.optoReduction = juce::jlimit (0.0f, 1.0f, user.comp.optoReduction + 0.25f * amount (silk, 0.1f, 0.9f));
         p.comp.warmth = juce::jlimit (0.0f, 1.0f, user.comp.warmth + 0.4f * amount (silk, 0.2f, 0.9f));
+        p.comp.weave = juce::jlimit (0.0f, 1.0f, user.comp.weave + 0.5f * amount (silk, 0.3f, 1.0f));
     }
 
     if (on.air)
+    {
         p.air.amount = juce::jlimit (0.0f, 1.0f, user.air.amount + 0.3f * amount (silk, 0.4f, 1.0f));
+        p.air.loom = juce::jlimit (0.0f, 1.0f, user.air.loom + 0.5f * amount (silk, 0.2f, 0.8f));
+    }
 
     p.outputGainDb = user.outputGainDb + levelTrimDb (user, p);
     return p;

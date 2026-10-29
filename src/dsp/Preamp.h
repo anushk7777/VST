@@ -46,8 +46,10 @@ private:
         float k = 0.0f, leak = 0.0f;
         float flux = 0.0f, lastSaturated = 0.0f;
 
-        /** fluxGain: how hard the core is driven (the flux that reaches its knee). */
-        float process (float x, float fluxGain) noexcept;
+        /** fluxGain: how hard the core is driven (the flux that reaches its knee).
+            remanence: leftover magnetism, so the core saturates unevenly and
+            its colour leans to the 2nd harmonic (0 = a symmetric core). */
+        float process (float x, float fluxGain, float remanence = 0.0f) noexcept;
         void reset() noexcept { flux = lastSaturated = 0.0f; }
     };
 
@@ -67,7 +69,7 @@ private:
     float envAttack = 0.0f, envRelease = 0.0f;
 
     juce::SmoothedValue<float> drive { 0.0f };
-    std::vector<float> driveRamp, classARamp, ironRamp;
+    std::vector<float> driveRamp, classARamp, ironRamp, remanenceRamp;
 
     juce::dsp::DelayLine<float, juce::dsp::DelayLineInterpolationTypes::None> dryDelay;
     juce::AudioBuffer<float> dry;

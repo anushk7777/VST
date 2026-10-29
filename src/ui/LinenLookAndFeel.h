@@ -8,20 +8,22 @@
 namespace linen
 {
 
-/** The embedded typefaces, loaded once per process. */
+/** The embedded typefaces (Archivo, cut from its width and weight axes),
+    loaded once per process. */
 struct Typefaces
 {
     Typefaces();
 
-    juce::Typeface::Ptr serifLight, serifMedium, serifItalic, sans, sansMedium;
+    juce::Typeface::Ptr display, displayMedium, sans, sansMedium;
 };
 
-/** Font helpers. Kerning is a fraction of the font height (0.08 = +0.08em). */
+/** Font helpers. Kerning is a fraction of the font height (0.08 = +0.08em).
+    Display: Archivo Expanded, for the wordmark and titles. Sans: Archivo
+    SemiCondensed, for labels and values. */
 namespace fonts
 {
-    juce::Font serif (float height, float kerning = 0.0f);
-    juce::Font serifMedium (float height, float kerning = 0.0f);
-    juce::Font serifItalic (float height, float kerning = 0.0f);
+    juce::Font display (float height, float kerning = 0.02f);
+    juce::Font displayMedium (float height, float kerning = 0.02f);
     juce::Font sans (float height, float kerning = 0.08f);
     juce::Font sansMedium (float height, float kerning = 0.08f);
 }
@@ -109,7 +111,7 @@ public:
 
 /** A chrome bat-handle toggle on a hex nut, as on vintage hardware: the
     lever tips up for IN and down for OUT, flipping over in 80 ms. Used for
-    the section switches and the ADC's slots. */
+    the section switches and Dua Wox's slots. */
 class LinenToggle final : public juce::ToggleButton
 {
 public:

@@ -8,6 +8,10 @@ namespace
 {
     constexpr double smoothingSeconds = 0.025;
 
+    // The first De-harsh display point at or above 2 kHz (points are log-spaced, 20 Hz to 20 kHz).
+    const int loomFromPoint = (int) std::ceil (std::log (2000.0 / DeharshDisplay::minHz) / std::log (DeharshDisplay::maxHz / DeharshDisplay::minHz)
+                                               * (DeharshDisplay::numPoints - 1));
+
     int maxDelayFor (int latency) { return juce::jmax (1, latency + 1); }
 
     /** Pain reaches into its neighbours: more preamp drive, a De-harsh that
@@ -213,6 +217,15 @@ void Engine::processChunk (juce::AudioBuffer<float>& buffer, const juce::AudioBu
     compSwitch.capture (wet);
     comp.process (wet);
     compSwitch.apply (wet);
+
+    // Silk loom: Air hears how deep De-harsh is cutting the top.
+    {
+        float harsh = 0.0f;
+        if (params.sections.deharsh)
+            for (int p = loomFromPoint; p < DeharshDisplay::numPoints; ++p)
+                harsh = juce::jmax (harsh, deharsh.getDisplay().cutDb[(size_t) p].load (std::memory_order_relaxed));
+        air.setHarshnessCut (harsh);
+    }
 
     airSwitch.capture (wet);
     air.process (wet);

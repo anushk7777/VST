@@ -37,6 +37,8 @@ namespace
     constexpr float bridgeImbalance = 0.025f;     // a little 2nd from the bridge, in step with the line stage's
     constexpr float warmthDrive = 0.03f;          // tube line stage drive at Warmth 100%
     constexpr double warmthBias = 0.3;
+    constexpr double weaveSpan = 0.25;            // extra line-stage bias at full Weave after a long push
+    constexpr float pushedAboveDb = 1.0f;         // reduction that counts as holding the voice down
     constexpr float textureFullAtDb = 12.0f;
     constexpr float bloomDb = 2.0f;               // low-mid bloom at full texture
     constexpr float softenDb = -3.0f;             // top shelf at full texture
@@ -176,6 +178,13 @@ void AdcCompressor::prepare (double newSampleRate, int maxBlockSize, int newNumC
     sidechainHp.c = Biquad::Coeffs::highPass (sampleRate, 100.0, 0.707);
     sidechainPresence.c = Biquad::Coeffs::peak (sampleRate, 3500.0, 0.9, 3.0);
 
+    breathHp.c = Biquad::Coeffs::highPass (sampleRate, 4500.0, 0.707);
+    gatePowerCoeff = coeff (0.0015);
+    gateAttack = coeff (0.0005);
+    gateRelease = coeff (0.030);
+    pushRise = coeff (2.0);
+    pushFall = coeff (3.0);
+
     slowCharge = coeff (2.0);
     slowRelease = coeff (1.5);
 
@@ -226,6 +235,9 @@ void AdcCompressor::reset()
     sidechainPresence.reset();
     splitter.reset();
     detecting = false;
+    breathHp.reset();
+    breathPower = bodyPower = breathiness = 0.0f;
+    pushed = 0.0f;
     tubeFast = tubeSlow = 0.0f;
     light = cell = trapped = exposure = 0.0f;
     tubeMeter.store (0.0f);
@@ -319,10 +331,23 @@ void AdcCompressor::process (juce::AudioBuffer<float>& buffer)
                 sidechainHp.reset();
                 sidechainPresence.reset();
                 splitter.reset();
+                breathHp.reset();
+                breathPower = bodyPower = breathiness = 0.0f;
                 detecting = true;
             }
 
-            const auto inputEnvelope = (float) splitter.envelopeSquared (sidechainPresence.process (sidechainHp.process (x)));
+            const float body = sidechainHp.process (x);
+            const auto inputEnvelope = (float) splitter.envelopeSquared (sidechainPresence.process (body));
+
+            // Breath gate: mostly air above 4.5 kHz means a breath or a consonant.
+            const float air = breathHp.process (x);
+            breathPower = air * air + (breathPower - air * air) * gatePowerCoeff;
+            bodyPower = body * body + (bodyPower - body * body) * gatePowerCoeff;
+            const float share = breathPower / (bodyPower + 1.0e-12f);
+            const float t = juce::jlimit (0.0f, 1.0f, (share - 0.3f) / 0.3f);
+            const float breathTarget = t * t * (3.0f - 2.0f * t);
+            breathiness = breathTarget + (breathiness - breathTarget) * (breathTarget > breathiness ? gateAttack : gateRelease);
+            const float hold = 1.0f - breathiness;
             const float envelope = inputEnvelope * reduction * reduction;   // the output's peak, squared
 
             // TUBE: the bias follows the output's level over the threshold.
@@ -331,7 +356,9 @@ void AdcCompressor::process (juce::AudioBuffer<float>& buffer)
             if (tubeActive)
             {
                 const float levelDb = 10.0f * std::log10 (envelope + 1.0e-12f);
-                const float target = tubeTarget (lean, levelDb - params.thresholdDb);
+                float target = tubeTarget (lean, levelDb - params.thresholdDb);
+                if (target > tubeFast)
+                    target = tubeFast + (target - tubeFast) * hold;
                 tubeFast = target + (tubeFast - target) * (target > tubeFast ? attack : fastRelease);
                 tubeSlow = tubeFast + (tubeSlow - tubeFast) * (tubeFast > tubeSlow ? slowCharge : slowRelease);
                 if (target <= 0.0f && tubeFast < 1.0e-6f && tubeSlow < 1.0e-6f)
@@ -341,7 +368,9 @@ void AdcCompressor::process (juce::AudioBuffer<float>& buffer)
             // OPTO: the panel lit by the sidechain, the cell following the light.
             if (optoActive)
             {
-                const float glow = optoSettledDb (0.5f * sidechain * sidechain * envelope);
+                float glow = optoSettledDb (0.5f * sidechain * sidechain * envelope);
+                if (glow > light)
+                    glow = light + (glow - light) * hold;
                 light = glow + (light - glow) * (glow > light ? lightRise : lightFall);
                 cell = light + (cell - light) * (light > cell ? cellAttack : cellRelease);
 
@@ -357,6 +386,11 @@ void AdcCompressor::process (juce::AudioBuffer<float>& buffer)
         }
 
         reductionRamp[(size_t) i] = reduction;
+        const float pushing = tubeDb + optoDb > pushedAboveDb ? 1.0f : 0.0f;
+        pushed = pushing + (pushed - pushing) * (pushing > pushed ? pushRise : pushFall);
+        if (pushed < 1.0e-6f && pushing <= 0.0f)
+            pushed = 0.0f;
+
         tubeColourRamp[(size_t) i] = tubeColourFor (tubeDb);
         gainRamp[(size_t) i] = reduction * makeup.getNextValue();
     }
@@ -389,7 +423,9 @@ void AdcCompressor::process (juce::AudioBuffer<float>& buffer)
     if (colouring)
     {
         const double drive = warmthDrive * warmth;
-        const double lineOffset = soft (warmthBias), lineNorm = drive > 0.0 ? 1.0 / (drive * softSlope (warmthBias)) : 0.0;
+        // Weave: the longer the voice has been held down, the further the bias leans.
+        const double bias = warmthBias + weaveSpan * juce::jlimit (0.0f, 1.0f, params.weave) * pushed;
+        const double lineOffset = soft (bias), lineNorm = drive > 0.0 ? 1.0 / (drive * softSlope (bias)) : 0.0;
 
         juce::dsp::AudioBlock<float> in (compressed.getArrayOfWritePointers(), (size_t) chans, (size_t) n);
         auto up = oversampling->processSamplesUp (in);
@@ -415,7 +451,7 @@ void AdcCompressor::process (juce::AudioBuffer<float>& buffer)
                 // Warmth: a biased line stage with unity small-signal gain
                 // (in double: the difference is far smaller than the signal).
                 if (drive > 0.0)
-                    diff += (float) ((soft (drive * u[j] + warmthBias) - lineOffset) * lineNorm - (double) u[j]);
+                    diff += (float) ((soft (drive * u[j] + bias) - lineOffset) * lineNorm - (double) u[j]);
 
                 u[j] = diff;
             }

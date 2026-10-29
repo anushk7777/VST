@@ -22,7 +22,7 @@ inline const std::array<Preset, 9> factory {{
     // Untouched: the output is the input, bit for bit (delayed by the latency).
     { "Clean", {} },
 
-    // The ADC compressor in every preset: the TUBE catches the peaks, the
+    // Dua Wox in every preset: the TUBE catches the peaks, the
     // OPTO levels the line underneath, Warmth (comp_cotton) colours both.
     { "House Silk", {
         { id::preampDrive, 0.3f },

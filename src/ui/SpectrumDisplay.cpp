@@ -296,7 +296,7 @@ void SpectrumDisplay::paint (juce::Graphics& g)
         g.setColour (champagneDeep.withAlpha (0.85f * pitchAlpha));
         g.fillPath (diamond);
         g.setColour (ink (0.55f * pitchAlpha));
-        g.setFont (fonts::serifItalic (13.0f));
+        g.setFont (fonts::sans (11.0f, 0.06f));
         g.drawText ("body", juce::Rectangle<float> (x + 7.0f, plot.getBottom() - 16.0f, 40.0f, 14.0f), juce::Justification::centredLeft);
     }
 
@@ -323,7 +323,7 @@ void SpectrumDisplay::paint (juce::Graphics& g)
         g.setColour (cobalt.withAlpha (0.6f * listenGlow));
         g.drawRoundedRectangle (box, 15.0f, 1.0f);
         g.setColour (cobaltDeep.withAlpha (listenGlow));
-        g.setFont (fonts::serifItalic (17.0f));
+        g.setFont (fonts::sans (14.0f, 0.04f));
         const int percent = juce::roundToInt (juce::jmax (0.0f, context.listening) * 100.0f);
         g.drawText ("listening to your voice  " + juce::String (percent) + "%", box, juce::Justification::centred);
     }
@@ -339,7 +339,7 @@ void SpectrumDisplay::paint (juce::Graphics& g)
         g.setColour ((messageGood ? cobalt : champagneDeep).withAlpha (0.5f * alpha));
         g.drawRoundedRectangle (box, 12.0f, 1.0f);
         g.setColour (espresso.withAlpha (alpha));
-        g.setFont (fonts::serifItalic (15.0f));
+        g.setFont (fonts::sans (12.5f, 0.04f));
         g.drawFittedText (message, box.reduced (14.0f, 2.0f).toNearestInt(), juce::Justification::centred, 2);
     }
 }
