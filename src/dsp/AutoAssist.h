@@ -25,8 +25,9 @@ struct AssistResult
 
     // Suggestions.
     float inputGainDb = 0.0f;
-    float preampDrive = 0.25f;
-    int highPass = 2;               // index: Off, 50, 80, 160, 300 Hz
+    float toneLowHz = 120.0f;       // the Tone low shelf, before the preamp
+    float toneLowGainDb = -3.0f;
+    float preampDrive = 0.3f;
     int lowFreq = 2;                // index: Off, 35, 60, 110, 220 Hz
     float lowGainDb = 0.0f;
     int midFreq = 4;                // index: Off, 360, 700, 1.6k, 3.2k, 4.8k, 7.2k

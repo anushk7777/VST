@@ -5,12 +5,11 @@ namespace linen::test
 
 namespace
 {
-    /** Neutral chain: every module at a setting that leaves the sound alone. */
+    /** Neutral chain: every module at a setting that leaves the sound alone
+        (the defaults). */
     EngineParams neutral()
     {
-        EngineParams p;
-        p.deharsh.depth = 0.0f;
-        return p;
+        return {};
     }
 
     juce::AudioBuffer<float> constant (int samples, float value)
@@ -39,19 +38,22 @@ public:
             engine.prepare (sr, block, 2);
             const auto in = whiteNoise (2, 48000);
             const auto out = runInBlocks (engine, in, block);
-            expectLessOrEqual (maxAbsDifference (in, out, engine.getLatencySamples()), 2.0e-5f);
+            expect (identicalAfter (in, out, engine.getLatencySamples()), "bit-exact");
         }
 
-        beginTest ("Mix at 50% on a neutral chain is still a clean pass-through");
+        beginTest ("Any Mix on a neutral chain is still an exact pass-through");
         {
-            Engine engine;
-            auto p = neutral();
-            p.mix = 0.5f;
-            engine.setParams (p);
-            engine.prepare (sr, block, 2);
-            const auto in = whiteNoise (2, 24000);
-            const auto out = runInBlocks (engine, in, block);
-            expectLessOrEqual (maxAbsDifference (in, out, engine.getLatencySamples()), 2.0e-5f);
+            for (const float mixAmount : { 0.0f, 0.37f, 0.5f })
+            {
+                Engine engine;
+                auto p = neutral();
+                p.mix = mixAmount;
+                engine.setParams (p);
+                engine.prepare (sr, block, 2);
+                const auto in = whiteNoise (2, 24000);
+                const auto out = runInBlocks (engine, in, block);
+                expect (identicalAfter (in, out, engine.getLatencySamples()), "mix " + juce::String (mixAmount));
+            }
         }
 
         beginTest ("Dry path follows any added wet latency: 50% Mix sums an impulse with no comb filtering");
@@ -176,7 +178,7 @@ public:
             auto in = whiteNoise (2, 10000);
             auto out = in;
             engine.process (out);
-            expectLessOrEqual (maxAbsDifference (in, out, engine.getLatencySamples()), 2.0e-5f);
+            expect (identicalAfter (in, out, engine.getLatencySamples()), "bit-exact");
         }
     }
 };

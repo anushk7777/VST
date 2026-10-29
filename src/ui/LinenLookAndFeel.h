@@ -102,6 +102,32 @@ public:
     int getIdealWidth() const;
 };
 
+/** A section's power switch: a small round button with a power glyph, lit
+    cobalt while the section is in. */
+class LinenPower final : public juce::ToggleButton
+{
+public:
+    LinenPower();
+
+    void paintButton (juce::Graphics&, bool highlighted, bool down) override;
+};
+
+/** A continuous value shown as a small pill (e.g. a shelf's frequency): drag
+    up or down, or scroll, to change it; double-click to reset. A Slider
+    underneath, so it attaches to a parameter like a knob. */
+class LinenValuePill final : public juce::Slider
+{
+public:
+    LinenValuePill();
+
+    void paint (juce::Graphics&) override;
+    void mouseEnter (const juce::MouseEvent&) override;
+    void mouseExit (const juce::MouseEvent&) override;
+
+private:
+    bool hovering = false;
+};
+
 /** Two-way switch (e.g. SOFT | HARD) bound to a two-choice parameter. */
 class LinenSegmented final : public juce::Component,
                              public juce::SettableTooltipClient

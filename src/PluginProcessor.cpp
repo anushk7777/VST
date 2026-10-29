@@ -77,13 +77,17 @@ void LinenAudioProcessor::applyAssist (const linen::AssistResult& r)
 {
     namespace id = linen::params::id;
 
+    // Listen sets Linen up as a whole, so it also switches on every section it sets.
     const std::pair<const char*, float> values[] {
-        { id::inputGain, r.inputGainDb },     { id::preampDrive, r.preampDrive },
-        { id::eqHighPass, (float) r.highPass }, { id::eqLowFreq, (float) r.lowFreq }, { id::eqLowGain, r.lowGainDb },
+        { id::inputGain, r.inputGainDb },
+        { id::toneOn, 1.0f },                  { id::toneLowFreq, r.toneLowHz },    { id::toneLowGain, r.toneLowGainDb },
+        { id::preampOn, 1.0f },                { id::preampDrive, r.preampDrive },
+        { id::eqLowFreq, (float) r.lowFreq },  { id::eqLowGain, r.lowGainDb },
         { id::eqMidFreq, (float) r.midFreq },  { id::eqMidGain, r.midGainDb },      { id::eqHighGain, r.highGainDb },
-        { id::deharshDepth, r.deharshDepth },  { id::deharshDetail, r.deharshDetail },
-        { id::compThreshold, r.compThresholdDb }, { id::compRatio, r.compRatio }, { id::compCotton, r.compCotton },
-        { id::airAmount, r.airAmount },        { id::airDeEss, r.airDeEss },
+        { id::deharshOn, 1.0f },               { id::deharshDepth, r.deharshDepth }, { id::deharshDetail, r.deharshDetail },
+        { id::compOn, 1.0f },                  { id::compThreshold, r.compThresholdDb }, { id::compRatio, r.compRatio },
+        { id::compCotton, r.compCotton },
+        { id::airOn, 1.0f },                   { id::airAmount, r.airAmount },      { id::airDeEss, r.airDeEss },
     };
 
     for (const auto& [paramId, value] : values)
@@ -114,7 +118,7 @@ void LinenAudioProcessor::loadPreset (int index)
         return;
 
     currentProgram = index;
-    state.state.setProperty ("preset", index, nullptr);
+    state.state.setProperty ("preset", juce::String (linen::presets::factory[(size_t) index].name), nullptr);
     linen::presets::apply (state, linen::presets::factory[(size_t) index]);
     updateHostDisplay (ChangeDetails().withProgramChanged (true));
 }
@@ -141,7 +145,13 @@ void LinenAudioProcessor::setStateInformation (const void* data, int sizeInBytes
         if (xml->hasTagName (state.state.getType()))
         {
             state.replaceState (juce::ValueTree::fromXml (*xml));
-            currentProgram = juce::jlimit (0, getNumPrograms() - 1, (int) state.state.getProperty ("preset", 0));
+
+            // The preset is saved by name. Sessions from 0.1 saved its index,
+            // from a list that had no Clean preset in front.
+            const auto preset = state.state.getProperty ("preset", {});
+            const int index = preset.isString() ? linen::presets::indexOf (preset.toString())
+                                                : (preset.isVoid() ? 0 : (int) preset + 1);
+            currentProgram = juce::jlimit (0, getNumPrograms() - 1, index);
         }
 }
 

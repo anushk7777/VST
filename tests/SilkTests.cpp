@@ -10,11 +10,11 @@ namespace
     constexpr double sr = 48000.0;
     constexpr int block = 512;
 
-    /** The plugin's default settings (see Parameters.h). */
+    /** The "House Silk" preset (see Presets.h). */
     EngineParams houseSound()
     {
         EngineParams p;
-        p.preampDrive = 0.25f;
+        p.preampDrive = 0.3f;
         p.deharsh.depth = 5.0f;
         p.comp.thresholdDb = -18.0f;
         p.comp.ratio = 2.0f;
@@ -23,6 +23,14 @@ namespace
         p.comp.cotton = 0.5f;
         p.air.amount = 0.3f;
         p.air.deEss = 0.5f;
+        return p;
+    }
+
+    /** The "Clean" preset: every default neutral. */
+    EngineParams cleanSound()
+    {
+        EngineParams p;
+        p.comp.thresholdDb = -18.0f;   // the parameter's default; idle at 1:1
         return p;
     }
 
@@ -54,6 +62,39 @@ public:
             expectEquals (p.comp.cotton, user.comp.cotton);
             expectEquals (p.air.amount, user.air.amount);
             expectEquals (p.outputGainDb, user.outputGainDb);
+
+            // A hair either side of the centre is still exactly neutral (a detent).
+            const auto nearly = SilkMacro::apply (user, 0.502f);
+            expectEquals (nearly.preampDrive, user.preampDrive);
+            expectEquals (nearly.outputGainDb, user.outputGainDb);
+        }
+
+        beginTest ("From Clean, Silk at or below 50% changes nothing at all");
+        {
+            const auto vocal = sungPhrase (48000 * 2);
+            for (const float silk : { 0.0f, 0.3f, 0.5f })
+            {
+                auto p = cleanSound();
+                p.silk = silk;
+                Engine engine;
+                engine.setParams (p);
+                engine.prepare (sr, block, 2);
+                const auto out = runInBlocks (engine, vocal, block);
+                expect (identicalAfter (vocal, out, engine.getLatencySamples()), "silk " + juce::String (silk));
+            }
+        }
+
+        beginTest ("Silk leaves switched-off sections alone");
+        {
+            auto user = houseSound();
+            user.sections.preamp = user.sections.comp = user.sections.air = false;
+            const auto p = SilkMacro::apply (user, 1.0f);
+            expectEquals (p.preampDrive, user.preampDrive);
+            expectEquals (p.comp.thresholdDb, user.comp.thresholdDb);
+            expectEquals (p.comp.ratio, user.comp.ratio);
+            expectEquals (p.air.amount, user.air.amount);
+            expectEquals (p.outputGainDb, user.outputGainDb, "no trim for a compressor that is off");
+            expectGreaterThan (p.deharsh.depth, user.deharsh.depth, "De-harsh is still on");
         }
 
         beginTest ("More silk means more of everything, in order; less pulls back toward transparent");
@@ -63,6 +104,7 @@ public:
             expectGreaterThan (up.preampDrive, user.preampDrive);
             expectGreaterThan (up.deharsh.depth, user.deharsh.depth);
             expectLessThan (up.comp.thresholdDb, user.comp.thresholdDb);
+            expectGreaterThan (up.comp.ratio, user.comp.ratio);
             expectGreaterThan (up.comp.cotton, user.comp.cotton);
             expectGreaterThan (up.air.amount, user.air.amount);
             expectLessThan (down.preampDrive, user.preampDrive);
@@ -74,21 +116,24 @@ public:
             expectLessThan (threeQuarters.air.amount - user.air.amount, 0.25f * (up.air.amount - user.air.amount));
         }
 
-        beginTest ("Turning Silk changes texture, not loudness (within 0.5 dB on a sung phrase)");
+        beginTest ("Turning Silk changes texture, not loudness (within 0.5 dB on a sung phrase, from House Silk and from Clean)");
         {
             const auto vocal = sungPhrase (48000 * 5);
-            const auto reference = outputLevelDb (houseSound(), vocal);
 
-            juce::String report;
-            for (const float silk : { 0.0f, 0.25f, 0.75f, 1.0f })
+            for (const auto& [label, base] : { std::pair { "house", houseSound() }, std::pair { "clean", cleanSound() } })
             {
-                auto p = houseSound();
-                p.silk = silk;
-                const float drift = outputLevelDb (p, vocal) - reference;
-                report << "silk " << silk << ": " << juce::String (drift, 2) << " dB  ";
-                expectWithinAbsoluteError (drift, 0.0f, 0.5f, "silk " + juce::String (silk));
+                const auto reference = outputLevelDb (base, vocal);
+                juce::String report = juce::String (label) + ":  ";
+                for (const float silk : { 0.0f, 0.25f, 0.75f, 1.0f })
+                {
+                    auto p = base;
+                    p.silk = silk;
+                    const float drift = outputLevelDb (p, vocal) - reference;
+                    report << "silk " << silk << ": " << juce::String (drift, 2) << " dB  ";
+                    expectWithinAbsoluteError (drift, 0.0f, 0.5f, juce::String (label) + ", silk " + juce::String (silk));
+                }
+                logMessage (report);
             }
-            logMessage (report);
         }
     }
 };

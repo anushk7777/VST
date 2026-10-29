@@ -17,9 +17,15 @@ namespace linen
     driven, low notes thicken first and the mids stay clean.
 
     Class-A stage: an asymmetric (biased) soft curve, mostly 2nd harmonic. The
-    bias leans further with the vocal's level (2 ms / 90 ms follower), so
-    belted notes bloom and quiet tails relax. Small-signal gain is always 1,
-    so Drive changes colour, not loudness.
+    bias leans further as the vocal gets louder (2 ms / 90 ms follower,
+    measured against a belted -6 dBFS peak), so belted notes bloom and quiet
+    tails relax. Small-signal gain is always 1, so Drive changes colour, not
+    loudness.
+
+    Drive is calibrated for a normally recorded vocal, the way a console is
+    gain-staged: how hard both stages are hit rises evenly in dB across the
+    knob. At 30% a belted -6 dBFS note carries about -55 dB of 2nd harmonic
+    (felt, not heard); at 100% about -30 dB (warm, never fuzz).
 
     Drive 0 is a bit-exact bypass (latency-matched). */
 class Preamp
@@ -37,11 +43,11 @@ public:
 private:
     struct Transformer
     {
-        float fluxGain = 0.3f;
         float k = 0.0f, leak = 0.0f;
         float flux = 0.0f, lastSaturated = 0.0f;
 
-        float process (float x, float drive) noexcept;
+        /** fluxGain: how hard the core is driven (the flux that reaches its knee). */
+        float process (float x, float fluxGain) noexcept;
         void reset() noexcept { flux = lastSaturated = 0.0f; }
     };
 
@@ -61,7 +67,7 @@ private:
     float envAttack = 0.0f, envRelease = 0.0f;
 
     juce::SmoothedValue<float> drive { 0.0f };
-    std::vector<float> driveRamp, gainRamp;
+    std::vector<float> driveRamp, classARamp, ironRamp;
 
     juce::dsp::DelayLine<float, juce::dsp::DelayLineInterpolationTypes::None> dryDelay;
     juce::AudioBuffer<float> dry;

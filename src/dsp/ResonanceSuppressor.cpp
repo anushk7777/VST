@@ -126,6 +126,7 @@ void ResonanceSuppressor::reset()
     lastPitch = {};
     protectedPitch = 0.0f;
     protectAmount = 0.0f;
+    passThrough = params.depth <= 0.0f;
 
     for (int p = 0; p < DeharshDisplay::numPoints; ++p)
     {
@@ -141,14 +142,23 @@ void ResonanceSuppressor::process (juce::AudioBuffer<float>& main, const float* 
     const int mask = fftSize - 1;
     const int channels = juce::jmin (numChannels, main.getNumChannels());
 
+    // Delta always plays the resynthesised difference (silence when nothing is cut).
+    const bool pass = passThrough && ! params.delta;
+
     for (int i = 0; i < main.getNumSamples(); ++i)
     {
         for (int ch = 0; ch < channels; ++ch)
         {
             auto* data = main.getWritePointer (ch);
-            inFifo[(size_t) ch][(size_t) fifoPos] = data[i];
-            data[i] = outFifo[(size_t) ch][(size_t) fifoPos];
-            outFifo[(size_t) ch][(size_t) fifoPos] = 0.0f;
+            auto& in = inFifo[(size_t) ch][(size_t) fifoPos];
+            auto& out = outFifo[(size_t) ch][(size_t) fifoPos];
+
+            // in still holds the input from one FFT length ago: exactly the
+            // sample out has been rebuilt from.
+            const float delayed = in;
+            in = data[i];
+            data[i] = pass ? delayed : out;
+            out = 0.0f;
         }
 
         detFifo[(size_t) fifoPos] = detector[i];
@@ -411,6 +421,21 @@ void ResonanceSuppressor::computeCuts()
 
         cutFinal[(size_t) k] = cut;
         gains[(size_t) k] = juce::Decibels::decibelsToGain (-cut, -200.0f);
+    }
+
+    // 8. Off: at Depth 0, once the last cut has all but let go (well under a
+    //    thousandth of a dB, far below hearing), finish the release in one step
+    //    and pass the input straight through from the next sample on.
+    if (params.depth > 0.0f)
+    {
+        passThrough = false;
+    }
+    else if (! passThrough && *std::max_element (cutFinal.begin(), cutFinal.end()) < 0.003f)
+    {
+        std::fill (cutSmoothed.begin(), cutSmoothed.end(), 0.0f);
+        std::fill (cutFinal.begin(), cutFinal.end(), 0.0f);
+        std::fill (gains.begin(), gains.end(), 1.0f);
+        passThrough = true;
     }
 }
 

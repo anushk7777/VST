@@ -111,14 +111,54 @@ public:
             expectEquals (suppressor.getLatencySamples(), 4096);
         }
 
-        beginTest ("Depth 0 is a clean, latency-aligned pass-through (sqrt-Hann WOLA reconstructs exactly)");
+        beginTest ("Depth 0 is an exact, latency-aligned pass-through");
         {
             auto p = neutralDeharsh();
             p.deharsh.depth = 0.0f;
             const auto in = whiteNoise (2, 48000);
             int latency = 0;
             const auto out = render (p, in, latency);
-            expectLessOrEqual (maxAbsDifference (in, out, latency), 2.0e-5f);
+            expect (identicalAfter (in, out, latency), "bit-exact");
+        }
+
+        beginTest ("Turned down to 0, it becomes exact again once the cuts have let go, without a jump");
+        {
+            Engine engine;
+            auto p = neutralDeharsh();
+            p.deharsh.depth = 10.0f;
+            engine.setParams (p);
+            engine.prepare (sr, block, 1);
+            const int latency = engine.getLatencySamples();
+
+            // A resonant voice for a second (so there is plenty to cut), then Depth 0.
+            const auto in = resonantNoise (48000 * 4, 3000.0f, 15.0f);
+            auto out = in;
+            for (int pos = 0; pos < out.getNumSamples(); pos += block)
+            {
+                if (pos >= 48000)
+                {
+                    p.deharsh.depth = 0.0f;
+                    engine.setParams (p);
+                }
+                juce::AudioBuffer<float> b (out.getArrayOfWritePointers(), 1, pos, juce::jmin (block, out.getNumSamples() - pos));
+                engine.process (b);
+            }
+
+            // From 2.5 s on (well after the release), bit-exact.
+            juce::AudioBuffer<float> inTail (1, 48000), outTail (1, 48000);
+            inTail.copyFrom (0, 0, in, 0, 48000 * 3 - latency, 48000);
+            outTail.copyFrom (0, 0, out, 0, 48000 * 3, 48000);
+            expect (identicalAfter (inTail, outTail, 0), "exact after the release");
+
+            // ...and the hand-over itself is far below hearing: in the second
+            // around it the output strays from the input by less than -60 dB
+            // of the signal's peak.
+            float stray = 0.0f;
+            for (int i = 48000 * 2; i < 48000 * 3; ++i)
+                stray = juce::jmax (stray, std::abs (out.getSample (0, i) - in.getSample (0, i - latency)));
+            const float strayDb = juce::Decibels::gainToDecibels (stray / in.getMagnitude (0, 0, in.getNumSamples()), -300.0f);
+            logMessage ("largest difference around the hand-over: " + juce::String (strayDb, 1) + " dB re peak");
+            expectLessThan (strayDb, -60.0f);
         }
 
         beginTest ("50% Mix with De-harsh latency sums an impulse with no comb filtering");

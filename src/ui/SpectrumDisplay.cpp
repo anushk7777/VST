@@ -11,6 +11,13 @@ namespace
     constexpr float floorDb = -96.0f, ceilingDb = -6.0f;
     constexpr float maxVeilDb = 18.0f;       // cut that reaches the veil's full depth
     constexpr float veilDepth = 0.55f;       // ...as a fraction of the plot height
+    constexpr float eqRangeDb = 15.0f;       // EQ curve: ±15 dB...
+    constexpr float eqSpan = 0.42f;          // ...spans this much of the plot either side of its middle
+
+    float eqHzAt (int point, int numPoints)
+    {
+        return minHz * std::pow (maxHz / minHz, (float) point / (float) (numPoints - 1));
+    }
 
     /** A smooth curve through every point (Catmull-Rom, as cubic Béziers). */
     juce::Path splineThrough (const std::vector<juce::Point<float>>& pts)
@@ -73,6 +80,22 @@ float SpectrumDisplay::yForCut (float db) const
     return plot.getY() + juce::jlimit (0.0f, 1.0f, db / maxVeilDb) * plot.getHeight() * veilDepth;
 }
 
+float SpectrumDisplay::yForEq (float db) const
+{
+    return plot.getCentreY() - juce::jlimit (-1.0f, 1.0f, db / eqRangeDb) * plot.getHeight() * eqSpan;
+}
+
+void SpectrumDisplay::updateEqCurve()
+{
+    eqVisible = false;
+    for (int i = 0; i < numEqPoints; ++i)
+    {
+        eqDb[(size_t) i] = eqResponse != nullptr ? eqResponse (eqHzAt (i, numEqPoints)) : 0.0f;
+        eqVisible = eqVisible || std::abs (eqDb[(size_t) i]) > 0.05f;
+    }
+    repaint();
+}
+
 void SpectrumDisplay::tick (double timestampSeconds)
 {
     const float dt = lastTick > 0.0 ? (float) juce::jlimit (0.0, 0.1, timestampSeconds - lastTick) : 1.0f / 60.0f;
@@ -95,6 +118,9 @@ void SpectrumDisplay::tick (double timestampSeconds)
         c += (targetCut - c) * (targetCut > c ? rise : fall);
         moving = moving || std::abs (l + c - before) > 0.01f;
     }
+
+    if (eqDirty.exchange (false))
+        updateEqCurve();
 
     const float pitch = source.pitchHz.load (std::memory_order_relaxed);
     if (pitch > 0.0f)
@@ -204,6 +230,30 @@ void SpectrumDisplay::paint (juce::Graphics& g)
     g.fillPath (wash);
     g.setColour (ink (0.36f));
     g.strokePath (spectrum, juce::PathStrokeType (1.2f, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
+
+    // The EQ shape: a cobalt line about a faint 0 dB rule, with a whisper of
+    // light between them, only while some band is boosting or cutting.
+    if (eqVisible)
+    {
+        std::vector<juce::Point<float>> eqPts;
+        eqPts.reserve (numEqPoints);
+        for (int i = 0; i < numEqPoints; ++i)
+            eqPts.push_back ({ xForHz (eqHzAt (i, numEqPoints)), yForEq (eqDb[(size_t) i]) });
+
+        const float zero = yForEq (0.0f);
+        auto curve = splineThrough (eqPts);
+        juce::Path area (curve);
+        area.lineTo (plot.getRight(), zero);
+        area.lineTo (plot.getX(), zero);
+        area.closeSubPath();
+
+        g.setColour (cobalt.withAlpha (0.07f));
+        g.fillPath (area);
+        g.setColour (cobalt.withAlpha (0.18f));
+        g.fillRect (juce::Rectangle<float> (plot.getX(), zero - 0.5f, plot.getWidth(), 1.0f));
+        g.setColour (cobalt.withAlpha (0.75f));
+        g.strokePath (curve, juce::PathStrokeType (1.4f, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
+    }
 
     // The silk veil: gain reduction hanging from the top edge, champagne to
     // terracotta, deepening toward crimson as Pain rises.

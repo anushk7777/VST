@@ -65,15 +65,6 @@ namespace
         return target > 0.0 ? (float) (10.0 * std::log10 ((measured + 1.0e-20) / target)) : 0.0f;
     }
 
-    int nearestSwitchBelow (const std::array<float, 5>& switches, float hz)
-    {
-        int best = 0;
-        for (int i = 1; i < (int) switches.size(); ++i)
-            if (switches[(size_t) i] <= hz)
-                best = i;
-        return best;
-    }
-
     float roundTo (float value, float step) { return std::round (value / step) * step; }
 }
 
@@ -238,29 +229,29 @@ AssistResult AutoAssist::analyse (const float* x, int n, double sr)
     // 5. Suggestions.
     r.inputGainDb = roundTo (juce::jlimit (-12.0f, 12.0f, -18.0f - r.levelDb), 0.5f);
 
-    // High-pass below the lowest useful voice energy (60% of the median note).
-    {
-        static constexpr std::array<float, 5> switches { 0.0f, 50.0f, 80.0f, 160.0f, 300.0f };
-        const float lowest = r.pitchHz > 0.0f ? r.pitchHz * 0.6f : 80.0f;
-        r.highPass = juce::jmax (r.boomDb > 4.0f ? 2 : 1, nearestSwitchBelow (switches, lowest));
-    }
-
+    // Low end, shaped before the preamp. A gentle shelf just under the sung
+    // notes (60% of the median note) clears rumble and boom, as a high-pass
+    // would, without its steep phase turn; a muddy voice gets the shelf moved
+    // up into the mud instead, and a thin one keeps its weight.
     const bool thin = r.mudDb < -3.0f;
-    r.lowFreq = 2;
-    r.lowGainDb = 0.0f;
+    r.toneLowHz = roundTo (juce::jlimit (60.0f, 160.0f, r.pitchHz > 0.0f ? 0.6f * r.pitchHz : 100.0f), 5.0f);
+    r.toneLowGainDb = r.boomDb > 3.0f ? -roundTo (juce::jlimit (3.0f, 6.0f, 2.0f + 0.5f * r.boomDb), 0.5f) : -3.0f;
     if (r.mudDb > 1.5f)
     {
-        r.lowFreq = 4;   // 220 Hz
-        r.lowGainDb = -roundTo (juce::jlimit (1.0f, 4.0f, r.mudDb * 0.7f), 0.5f);
-    }
-    else if (r.boomDb > 3.0f)
-    {
-        r.lowFreq = 3;   // 110 Hz
-        r.lowGainDb = -roundTo (juce::jlimit (1.0f, 4.0f, r.boomDb * 0.5f), 0.5f);
+        r.toneLowHz = 300.0f;
+        r.toneLowGainDb = -roundTo (juce::jlimit (1.5f, 5.0f, 1.0f + 0.7f * r.mudDb), 0.5f);
     }
     else if (thin)
     {
-        r.lowFreq = 3;
+        r.toneLowGainDb = -1.0f;
+    }
+
+    // The console's low shelf only ever adds weight to a thin voice.
+    r.lowFreq = 2;
+    r.lowGainDb = 0.0f;
+    if (thin)
+    {
+        r.lowFreq = 3;   // 110 Hz
         r.lowGainDb = roundTo (juce::jmin (2.0f, -r.mudDb * 0.4f), 0.5f);
     }
 
@@ -276,7 +267,7 @@ AssistResult AutoAssist::analyse (const float* x, int n, double sr)
     else if (r.dullDb < -3.0f)
         r.highGainDb = -roundTo (juce::jlimit (0.5f, 3.0f, -r.dullDb * 0.4f), 0.5f);
 
-    r.preampDrive = thin ? 0.35f : 0.25f;
+    r.preampDrive = thin ? 0.4f : 0.3f;
 
     const float harshScore = juce::jmax (0.0f, r.harshDb) + 0.5f * juce::jmax (0.0f, r.resonanceDb - 2.0f);
     r.deharshDepth = roundTo (juce::jlimit (3.0f, 10.0f, 4.0f + harshScore * 0.8f), 0.1f);
@@ -303,7 +294,8 @@ AssistResult AutoAssist::analyse (const float* x, int n, double sr)
     heard.add (r.dynamicsDb > 18.0f ? "big dynamics" : (r.dynamicsDb > 12.0f ? "lively dynamics" : "steady dynamics"));
 
     did.add ("De-harsh " + juce::String (r.deharshDepth, 1));
-    if (r.lowGainDb < 0.0f) did.add ("low cut " + juce::String (r.lowGainDb, 1) + " dB");
+    if (r.toneLowGainDb < 0.0f)
+        did.add ("low shelf " + juce::String (r.toneLowGainDb, 1) + " dB under " + juce::String (juce::roundToInt (r.toneLowHz)) + " Hz");
     if (r.lowGainDb > 0.0f) did.add ("low lift +" + juce::String (r.lowGainDb, 1) + " dB");
     if (! juce::exactlyEqual (r.highGainDb, 0.0f)) did.add ("12k " + juce::String (r.highGainDb, 1) + " dB");
     did.add ("comp " + juce::String (r.compRatio, 1) + ":1 at " + juce::String (r.compThresholdDb, 1) + " dB");

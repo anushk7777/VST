@@ -4,10 +4,13 @@
 
 Linen is a vocal plugin (VST3) built to make vocals smooth and expensive-sounding. It combines:
 
+- Tone shelves that shape the voice before the preamp;
 - a warm 1073-style preamp and EQ;
 - a de-harsher that removes harsh resonances as they happen;
 - an invisible, gentle compressor;
 - an Air stage that adds breath without bringing back the esses.
+
+**Clean by default.** A fresh Linen does nothing to your audio: the output is your input, bit for bit (just delayed, which FL Studio compensates). Every knob then works on its own from there. This is checked on the built plugin in every build (see [Clean, and the phase test](#clean-and-the-phase-test)).
 
 The full plan and the status of each phase are in [docs/PLAN.md](docs/PLAN.md).
 
@@ -25,6 +28,7 @@ The full plan and the status of each phase are in [docs/PLAN.md](docs/PLAN.md).
 | 5b | Pain (vocal distress engine) | done |
 | 6 | AI Listen button | done |
 | 6b | Premium UI: linen + cobalt lights, jewel lamps, halos, backlit display | done |
+| 5c | Clean by default (bit-exact null, checked on the built VST3), clean drive calibration, Tone shelves before the preamp, section power switches, Null button | done |
 | 7 | Neural preamp (needs real 1073 recordings) | planned |
 
 ## Install in FL Studio (Windows 11)
@@ -37,17 +41,45 @@ The full plan and the status of each phase are in [docs/PLAN.md](docs/PLAN.md).
 
 **Linen-Standalone-Windows** is the same thing as a standalone app, for a quick look without FL Studio.
 
+The version number is at the bottom right of the window (this one is **v0.2.0**).
+
+## Clean, and the phase test
+
+Linen opens on the **Clean** preset: every section is in, but every setting is neutral (Drive 0, Depth 0, Ratio 1:1, Cotton 0, Air 0, De-ess 0, all EQ and shelf gains 0 dB, Silk 50%, Pain 0). The output is then exactly the input, delayed by Linen's latency.
+
+**Prove it yourself in FL Studio:**
+- **The NULL button** (Output section) plays Linen's output minus your untouched vocal, sample-aligned. On Clean your meters read silence (-inf). On any other setting you hear exactly what Linen adds or takes away, distortion included.
+- **The classic two-track test:**
+  1. Put the vocal on two mixer tracks: one with Linen on Clean, one without.
+  2. Flip the polarity of one track (the "reverse polarity" button in the mixer track's properties).
+  3. Route both to the master. FL Studio's delay compensation lines them up, and the master meter stays at -inf.
+
+**How every build is checked:** `LinenCheck` loads the built `Linen.vst3` the way a DAW does. It plays noise, a sung vowel, a full-scale sweep and silence through it:
+- at 44.1, 48 and 96 kHz;
+- in stereo and mono;
+- in irregular block sizes.
+
+It then subtracts the input, lined up by the latency the plugin reports. Clean must come back **bit for bit**, and so must every section switched off with every knob cranked. GitHub's Windows build runs this on the very `Linen.vst3` you download, and also saves the picture (artifact **Linen-null-test**).
+
+It also measures every preset's distortion. Presets without Pain must stay under -45 dB THD on a -6 dBFS note.
+
+## Use one knob on its own
+
+- Start from **Clean** and turn just the knob you want (Drive, Depth, a Tone shelf, Pain…): only that section changes the sound. The tests check this bit for bit for every section.
+- Each section has a **power button** before its title. Off is an exact bypass: your settings stay, but nothing they do is heard. Use it to hear one section of a preset on its own, or to switch one out.
+- **Pain** on its own also brings its own small preamp push, the way it was designed. Switch the Preamp off to hear Pain alone.
+
 ## AI Listen
 
 Press **AI LISTEN** (under the preset box), then play your vocal. The lamp ring pulses cobalt and fills as it listens. After about 6 seconds of actual singing, it compares the vocal with the balance of a smooth, finished pop vocal and sets Linen up for it:
 - input gain;
-- high-pass;
-- low, mid and 12k EQ;
+- the Tone low shelf (just under the sung notes, or up in the mud for a muddy voice);
+- preamp drive, and the low, mid and 12k EQ;
 - De-harsh depth;
 - compressor threshold, ratio and Cotton;
 - Air and De-ess.
 
-The display then tells you in plain words what it heard and what it changed. Silk and Pain stay where you put them. Everything runs locally; click the button again to stop.
+The display then tells you in plain words what it heard and what it changed. Silk and Pain stay where you put them, and the sections it sets are switched on. Everything runs locally; click the button again to stop.
 
 ## Pain
 
@@ -69,7 +101,7 @@ The knob burns crimson and the silk veil trembles as stress rises. The presets *
   - Silk comp: gain reduction;
   - Air: air, flaring on every S;
   - Output: signal.
-- Switches carry a small cobalt LED when on.
+- Switches carry a small cobalt LED when on, and each section's power button lights cobalt while it is in.
 - Silk's halo breathes with the vocal.
 - The display is backlit, and turns cobalt while AI Listen is listening.
 
@@ -79,22 +111,37 @@ The knob burns crimson and the silk veil trembles as stress rises. The presets *
 - **Turning it up** adds the following together, each on its own curve in the order an engineer would reach for them, while an automatic trim keeps the level within 0.5 dB:
   - preamp drive first;
   - De-harsh depth across the whole travel;
-  - compression and Cotton in the middle;
+  - compression (threshold and ratio) and Cotton in the middle;
   - Air last.
-- **Turning it down** pulls everything back toward transparent.
+- **Turning it down** pulls everything back toward transparent. From Clean there is nothing to pull back, so below 50% it changes nothing.
+- Sections that are switched off are left alone.
 
 **Presets** (the box at the top, also listed in FL Studio's preset menu):
 
-| Preset | Character |
+| Preset | Character | Distortion on a -6 dBFS note |
+|---|---|---|
+| Clean | Untouched: bit for bit. The default. | none |
+| House Silk | Warm, smooth, gently held. | about -51 dB |
+| Velvet Pop Lead | Polished, silky, forward modern pop lead. Its Tone shelves take a little weight out below 450 Hz and add a little presence from 3 kHz (the Pro-Q moves it was first paired with). | about -48 dB |
+| Breathy Intimate | Close and airy; the breaths open up, the esses stay soft. | about -53 dB |
+| Warm & Close | More preamp and Cotton: round, thick, cushioned. | about -46 dB |
+| Transparent Polish | Barely there: de-harshed, lightly held, a touch of air. | none |
+| De-harsh Only | Just the resonance suppressor. | none |
+| Velvet Ache | Warm, intimate R&B/pop with emotional bite (Silk 65%, Pain 35%). | cracks when pushed (Pain) |
+| Torn Linen | Raw, overdriven, heart-on-sleeve chorus vocal (Silk 40%, Pain 80%). | cracks when pushed (Pain) |
+
+The distortion figures are measured by `LinenCheck` on the built plugin. -50 dB is about 0.3%: felt as warmth, not heard as distortion.
+
+## Using Tone
+
+**Tone** shapes the voice before it reaches the preamp, like Pro-Q shelves in front of a channel strip. Taking a little weight out of the lows (instead of a high-pass) keeps the preamp clean and the voice full. A little lift from 3 kHz opens it up.
+
+| Control | What it does |
 |---|---|
-| House Silk | The defaults: warm, smooth, gently held. |
-| Velvet Pop Lead | Polished, silky, forward modern pop lead. |
-| Breathy Intimate | Close and airy; the breaths open up, the esses stay soft. |
-| Warm & Close | More preamp and Cotton: round, thick, cushioned. |
-| Transparent Polish | Barely there: de-harshed, lightly held, a touch of air. |
-| De-harsh Only | Just the resonance suppressor. |
-| Velvet Ache | Warm, intimate R&B/pop with emotional bite (Silk 65%, Pain 35%). |
-| Torn Linen | Raw, overdriven, heart-on-sleeve chorus vocal (Silk 40%, Pain 80%). |
+| **Low shelf** | ±12 dB below its frequency (30 Hz–1 kHz, default 250 Hz). Half the gain at the frequency, all of it a few octaves below. |
+| **High shelf** | ±12 dB above its frequency (1–16 kHz, default 3 kHz). |
+
+The shelves are gentle and never overshoot. Drag a frequency pill up or down (Shift for fine steps), scroll on it, or double-click to reset. The display draws the EQ shape (Tone plus the console EQ) as a thin cobalt line. At 0 dB the shelves leave the sound untouched.
 
 ## Using the Preamp and EQ
 
@@ -102,8 +149,7 @@ The preamp is modelled on the behaviour of a classic 1073-style class-A channel:
 
 | Control | What it does |
 |---|---|
-| **Drive** | Pushes the preamp. Low settings add a little density; higher settings thicken low notes (transformer iron) and add warm 2nd-harmonic bloom that grows on loud, belted lines and relaxes on soft ones. Drive changes colour, not loudness. At 0 the preamp is fully bypassed. |
-| **High-pass** | Off, 50, 80, 160 or 300 Hz at 18 dB/oct. 80 Hz is a good default for vocals. |
+| **Drive** | Gain-stages the preamp the way a console is set up for a normally recorded vocal. On a belted -6 dBFS note: at 30% (the house sound) about -55 dB of 2nd harmonic, felt rather than heard; at 100% about -30 dB, warm but never fuzz. Higher settings also thicken low notes (transformer iron), and the bloom grows on loud lines and relaxes on soft ones. Drive changes colour, not loudness. At 0 the preamp is fully bypassed. |
 | **Low** | Low shelf at 35, 60, 110 or 220 Hz, ±16 dB, with the gentle bump these shelves are known for. |
 | **Mid** | Bell at 360 Hz, 700 Hz, 1.6, 3.2, 4.8 or 7.2 kHz, ±18 dB. It is broad at small settings and narrows as you push it. |
 | **High 12k** | High shelf at 12 kHz, ±16 dB, for air and sheen. |
@@ -118,17 +164,17 @@ Click a frequency selector for its list, or scroll/drag over it to step.
 - A 100 Hz sidechain high-pass, so plosives and boom don't pump it.
 - A two-stage optical release. Half of the gain reduction lets go at the Release time. The other half lets go slowly, between 0.4 s and 5 s, and more slowly the longer and harder it has been holding the voice, like an optical cell's memory. Heavy, sustained compression therefore never pumps.
 
-**Cotton** is Linen's signature texture. It only acts while the compressor is working, and in proportion to how hard:
-- soft diode-bridge-style harmonics (mostly 2nd, run at 2× oversampling);
+**Cotton** is Linen's signature texture. It only acts while the compressor is working (Ratio above 1:1), and in proportion to how hard:
 - a touch of low-mid warmth;
-- a softer top.
+- a softer top;
+- a whisper of diode-bridge-style harmonics (mostly 2nd, run at 2× oversampling): about -50 dB even at 100%.
 
 Loud, belted lines turn round, warm and cushioned. Quiet, breathy lines are untouched, and that's where Air opens them up. At 0 the compressor is a clean gain.
 
 | Control | What it does |
 |---|---|
 | **Cotton** | The texture while compressing. 0 = clean; 50% = the house sound; 100% = plush. |
-| **Threshold / Ratio** | Where it starts and how firmly it holds. A ratio of 1.5–2.5 is invisible; 4 and above is firm. |
+| **Threshold / Ratio** | Where it starts and how firmly it holds. 1:1 is off. A ratio of 1.5–2.5 is invisible; 4 and above is firm. |
 | **Attack** | Slower attack lets consonants through for a natural edge. |
 | **Release** | The fast half of the release. The slow half follows the singing by itself. |
 | **Blend** | Parallel compression: mix in the uncompressed voice. |
@@ -142,7 +188,7 @@ De-harsh listens for frequencies that suddenly poke out above the rest of the vo
 
 | Control | What it does |
 |---|---|
-| **Depth** | How much of each harsh peak is removed. Start around 4–6. |
+| **Depth** | How much of each harsh peak is removed. 0 is off (an exact pass-through). Start around 4–6. |
 | **Detail** | Low = broad, gentle cuts; high = narrow, picky cuts that only catch sharp rings. |
 | **Attack / Release** | How quickly cuts close in and let go. Slower release sounds smoother. |
 | **Max cut** | The deepest any single frequency can be cut, so loud notes never lose their body. |
@@ -171,6 +217,12 @@ build/LinenTests_artefacts/Release/LinenTests      # unit tests
 build/LinenRender_artefacts/Release/LinenRender in.wav out.wav --depth 6 --detail 0.5 --mix 1
 ```
 
+**Plugin check** loads the built VST3 like a DAW. It runs the null test and measures each preset's distortion; add `--wav vocal.wav` to null-test your own recording too:
+
+```sh
+build/LinenCheck_artefacts/Release/LinenCheck build/Linen_artefacts/Release/VST3/Linen.vst3 --plot null.png
+```
+
 ## Layout
 
 | Path | Contents |
@@ -181,5 +233,6 @@ build/LinenRender_artefacts/Release/LinenRender in.wav out.wav --depth 6 --detai
 | `src/ui/` | Look and feel: linen, champagne and espresso, with cobalt light (`Palette.h`); linen backdrop, cards, jewel lamps (`Lights.*`), display. |
 | `tests/` | DSP unit tests. |
 | `tools/render.cpp` | Offline render CLI. |
+| `tools/check.cpp` | Hosts the built VST3: bit-exact null test of Clean, distortion by preset (runs in CI). |
 | `tools/snapshot.cpp` | Dev tool: renders the window to PNG while a test vocal plays (`-DLINEN_BUILD_SNAPSHOT=ON`). |
 | `assets/fonts/` | Cormorant Garamond and Inter, both under the SIL Open Font License (texts included). |

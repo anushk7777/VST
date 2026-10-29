@@ -50,6 +50,9 @@ public:
     /** Static curve: gain change in dB for a steady input level (negative = reduction). */
     static float staticGainDb (float inputDb, float thresholdDb, float ratio);
 
+    /** The automatic make-up gain for these settings, in dB (0 with Auto gain off). */
+    static float makeupDb (const CompParams& p);
+
     /** Gain reduction right now, in positive dB (for the meter). */
     float getGainReductionDb() const noexcept { return meterDb.load (std::memory_order_relaxed); }
 

@@ -11,8 +11,26 @@ We do **not** decompile Soothe. We rebuild its *behaviour* from public info with
 - It also has band shaping, mid/side, sidechain, delta listen, low-latency and linear-phase modes.
 
 ## Signal chain
-`Input → Preamp (1073-style) → 1073-style EQ → De-harsh → Silk Comp → Air → Mix/Output`, with a latency-matched dry path into Mix.
-Preamp goes first so De-harsh cleans up any glare its harmonics add.
+`Input → Tone shelves → Preamp (1073-style) → 1073-style EQ → Pain → De-harsh → Silk Comp → Air → Mix/Output`, with a latency-matched dry path into Mix.
+Preamp goes first so De-harsh cleans up any glare its harmonics add. Since 0.2 the Tone shelves come first, so the preamp is fed a balanced voice.
+
+## 0.2: clean by default (Oct 2026)
+The owner heard Velvet Pop Lead distort in FL Studio. The cause: the preamp's class-A stage and the irons were calibrated against 0 dBFS, so a normally recorded vocal drove them hard. At the old default Drive (25%), a vocal peaking at -6 dBFS got about -28 dB THD; Velvet Pop Lead got -25 dB, and -19 dB at -1 dBFS. Cotton added about -34 dB on top.
+
+What changed:
+- **Calibration.** Drive gain-stages the preamp around a normal vocal level, rising evenly in dB across the knob: about -55 dB THD at 30% and -30 dB at 100% on a -6 dBFS note. Cotton's harmonics are a tenth of what they were, and the Air exciter is gentler.
+- **Clean by default.** Every parameter default is neutral, and preset 0 is "Clean". Every neutral path is bit-exact:
+  - De-harsh at Depth 0 passes the input straight through instead of the FFT round trip;
+  - Mix is written so an untouched wet path returns the dry exactly;
+  - Silk has a detent at 50%.
+- **Tone shelves before the preamp** (`ToneShelves`): free-frequency low and high shelves (RBJ, Q 0.707, no overshoot) replace the 1073 high-pass, which is removed.
+- **Section power switches** (`SectionBypass`): an off section is an exact, latency-aligned bypass with a 20 ms fade.
+- **Null button:** output minus the aligned input, as a phase test inside the plugin.
+
+Verification:
+- `CleanTests`: Clean and all-sections-off are bit-exact at several rates and layouts; each knob alone changes only its own module, bit-exact against the module run on its own.
+- Harmonic budgets in the module tests.
+- `tools/check.cpp` (LinenCheck) hosts the built VST3 in CI, null-tests Clean bit for bit, and holds non-Pain presets to -45 dB THD.
 
 ## DSP modules (`src/dsp/`), each with `prepare/process/reset/getLatencySamples`
 1. **ResonanceSuppressor**
@@ -30,7 +48,7 @@ Preamp goes first so De-harsh cleans up any glare its harmonics add.
    - Transformer iron: leaky integrator → soft saturator → matching differentiator. Flux follows the integral of voltage, so low notes saturate first and the mids stay clean.
    - Class-A stage: an asymmetric waveshaper whose bias moves with an envelope follower (2 ms attack / 90 ms release), followed by a DC blocker. Loud belts bloom with more 2nd harmonic; quiet tails relax.
 3. **Eq1073**
-   - HPF at 50/80/160/300 Hz (18 dB/oct).
+   - (0.1 had an HPF at 50/80/160/300 Hz; 0.2 replaces it with the Tone low shelf before the preamp.)
    - Low shelf at 35/60/110/220 Hz.
    - Mid bell at 360/700/1.6k/3.2k/4.8k/7.2k, with Q that changes with gain.
    - High shelf at 12 kHz.

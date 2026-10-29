@@ -167,33 +167,39 @@ public:
             expectLessThan (h3 - h1, -100.0);
         }
 
-        beginTest ("Cotton: gentle, mostly 2nd-harmonic colour while compressing");
+        beginTest ("Cotton stays a whisper: under -52 dB at 50% (6 dB GR), under -42 dB at 100% (10 dB GR)");
         {
-            const auto harmonics = [] (float cotton)
+            // A belted 1 kHz note at -6 dBFS peak, with auto gain, as on a real vocal.
+            struct Reading { double thd, h2, h3; float gr; };
+            const auto measure = [] (float cotton, float ratio, float thresholdDb)
             {
                 SilkCompressor comp;
                 CompParams p;
-                p.thresholdDb = -24.0f;
-                p.ratio = 3.0f;
+                p.thresholdDb = thresholdDb;
+                p.ratio = ratio;
                 p.cotton = cotton;
-                p.autoMakeup = false;
                 comp.setParams (p);
                 comp.prepare (sr, block, 1);
-                auto tone = silence (65536);
-                addSine (tone, 300.0, -6.0f);
+                auto tone = sineWave (1000.0, -6.0f, 65536);
                 runBlocks (comp, tone);
-                const double h1 = toneDb (tone, 300.0);
-                return std::pair { toneDb (tone, 600.0) - h1, toneDb (tone, 900.0) - h1 };
+                const double h1 = toneDb (tone, 1000.0);
+                return Reading { thdDb (tone, 1000.0), toneDb (tone, 2000.0) - h1, toneDb (tone, 3000.0) - h1, comp.getGainReductionDb() };
             };
 
-            const auto [h2, h3] = harmonics (1.0f);
-            const auto [cleanH2, cleanH3] = harmonics (0.0f);
-            logMessage ("cotton 1: H2 " + juce::String (h2, 1) + " dB, H3 " + juce::String (h3, 1)
-                        + " dB; cotton 0: H2 " + juce::String (cleanH2, 1) + " dB");
-            expectGreaterThan (h2, -55.0, "colour should be there");
-            expectLessThan (h2, -30.0, "...but gentle");
-            expectGreaterThan (h2, h3, "2nd harmonic leads");
-            expectLessThan (cleanH2, -90.0, "cotton 0 stays clean");
+            const auto half = measure (0.5f, 2.0f, -18.0f);
+            const auto full = measure (1.0f, 3.0f, -21.0f);
+            const auto none = measure (0.0f, 3.0f, -21.0f);
+            logMessage ("cotton 50% at " + juce::String (half.gr, 1) + " dB GR: THD " + juce::String (half.thd, 1)
+                        + " dB; 100% at " + juce::String (full.gr, 1) + " dB GR: THD " + juce::String (full.thd, 1)
+                        + " dB (H2 " + juce::String (full.h2, 1) + ", H3 " + juce::String (full.h3, 1)
+                        + "); cotton 0: " + juce::String (none.thd, 1) + " dB");
+            expectWithinAbsoluteError (half.gr, 6.0f, 1.5f);
+            expectWithinAbsoluteError (full.gr, 10.0f, 1.5f);
+            expectLessThan (half.thd, -52.0);
+            expectLessThan (full.thd, -42.0);
+            expectGreaterThan (full.thd, none.thd + 20.0, "...but the texture is there");
+            expectGreaterThan (full.h2, full.h3, "mostly 2nd harmonic");
+            expectLessThan (none.thd, -90.0, "Cotton 0 adds nothing");
         }
 
         beginTest ("Cotton: loud lines turn warmer and softer on top");
@@ -253,7 +259,7 @@ public:
             auto in = whiteNoise (2, 24000, 0.9f);
             auto out = in;
             runBlocks (comp, out);
-            expectLessOrEqual (maxAbsDifference (in, out, comp.getLatencySamples()), 1.0e-6f);
+            expect (identicalAfter (in, out, comp.getLatencySamples()), "bit-exact");
         }
     }
 };
@@ -370,6 +376,33 @@ public:
             const double spur = 20.0 * std::log10 (worst / partial);
             logMessage ("worst spur re the 9.5 kHz partial: " + juce::String (spur, 1) + " dB");
             expectLessThan (spur, -80.0);
+        }
+
+        beginTest ("The sparkle stays above 9 kHz: no intermodulation grit down in the voice");
+        {
+            Air air;
+            AirParams p;
+            p.amount = 1.0f;
+            air.setParams (p);
+            air.prepare (sr, block, 1);
+
+            // A vowel with two upper partials whose difference (800 Hz) and
+            // sum products land in and above the voice.
+            auto in = silence (65536);
+            addSine (in, 220.0, -10.0f);
+            addSine (in, 6300.0, -26.0f);
+            addSine (in, 7100.0, -26.0f);
+            auto out = in;
+            runBlocks (air, out);
+
+            const double partial = toneDb (out, 6300.0);
+            const double difference = toneDb (out, 800.0) - partial;
+            const double sparkle = toneDb (out, 13400.0) - partial;
+            logMessage ("800 Hz difference tone " + juce::String (difference, 1) + " dB, 13.4 kHz sparkle "
+                        + juce::String (sparkle, 1) + " dB, re the 6.3 kHz partial");
+            expectLessThan (difference, -80.0, "no grit in the voice band");
+            expectLessThan (sparkle, -20.0, "sparkle is gentle");
+            expectGreaterThan (sparkle, -60.0, "...but there");
         }
     }
 };

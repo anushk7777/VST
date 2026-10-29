@@ -33,6 +33,7 @@ void Engine::prepare (double newSampleRate, int maxBlockSize, int numChannels)
 
     const juce::dsp::ProcessSpec spec { sampleRate, (juce::uint32) maxBlock, (juce::uint32) numChans };
 
+    tone.prepare (sampleRate, numChans);
     preamp.prepare (sampleRate, maxBlock, numChans);
     eq.prepare (sampleRate, numChans);
     painEngine.prepare (sampleRate, maxBlock, numChans);
@@ -41,6 +42,14 @@ void Engine::prepare (double newSampleRate, int maxBlockSize, int numChannels)
     air.prepare (sampleRate, maxBlock, numChans);
     detector.assign ((size_t) maxBlock, 0.0f);
 
+    // Each switch's bypass is as late as its section, so switching a section
+    // out never moves anything in time.
+    toneSwitch.prepare (sampleRate, maxBlock, numChans, 0);
+    preampSwitch.prepare (sampleRate, maxBlock, numChans, preamp.getLatencySamples());
+    deharshSwitch.prepare (sampleRate, maxBlock, numChans, deharsh.getLatencySamples());
+    compSwitch.prepare (sampleRate, maxBlock, numChans, comp.getLatencySamples());
+    airSwitch.prepare (sampleRate, maxBlock, numChans, 0);
+
     dryDelay.prepare (spec);
     testWetDelay.prepare (spec);
     dryBuffer.setSize (numChans, maxBlock, false, false, true);
@@ -48,6 +57,7 @@ void Engine::prepare (double newSampleRate, int maxBlockSize, int numChannels)
     inputGain.reset (sampleRate, smoothingSeconds);
     outputGain.reset (sampleRate, smoothingSeconds);
     mix.reset (sampleRate, smoothingSeconds);
+    nullAmount.reset (sampleRate, smoothingSeconds);
 
     updateLatency();
     reset();
@@ -55,6 +65,7 @@ void Engine::prepare (double newSampleRate, int maxBlockSize, int numChannels)
 
 void Engine::reset()
 {
+    tone.reset();
     preamp.reset();
     eq.reset();
     painEngine.reset();
@@ -64,14 +75,24 @@ void Engine::reset()
     dryDelay.reset();
     testWetDelay.reset();
 
+    for (auto* s : { &toneSwitch, &preampSwitch, &deharshSwitch, &compSwitch, &airSwitch })
+        s->reset();
+
     inputGain.setCurrentAndTargetValue (juce::Decibels::decibelsToGain (params.inputGainDb));
     outputGain.setCurrentAndTargetValue (juce::Decibels::decibelsToGain (params.outputGainDb));
     mix.setCurrentAndTargetValue (params.deharsh.delta ? 1.0f : params.mix);
+    nullAmount.setCurrentAndTargetValue (params.nullTest ? 1.0f : 0.0f);
 }
 
 void Engine::setParams (const EngineParams& newParams)
 {
     params = withPainCoupling (SilkMacro::apply (newParams, newParams.silk));
+
+    // Delta plays what De-harsh removes; with De-harsh switched off there is nothing to play.
+    if (! params.sections.deharsh)
+        params.deharsh.delta = false;
+
+    tone.setParams (params.tone);
     painEngine.setPain (params.pain);
     preamp.setDrive (params.preampDrive);
     eq.setParams (params.eq);
@@ -79,11 +100,18 @@ void Engine::setParams (const EngineParams& newParams)
     comp.setParams (params.comp);
     air.setParams (params.air);
 
+    toneSwitch.setOn (params.sections.tone);
+    preampSwitch.setOn (params.sections.preamp);
+    deharshSwitch.setOn (params.sections.deharsh);
+    compSwitch.setOn (params.sections.comp);
+    airSwitch.setOn (params.sections.air);
+
     inputGain.setTargetValue (juce::Decibels::decibelsToGain (params.inputGainDb));
     outputGain.setTargetValue (juce::Decibels::decibelsToGain (params.outputGainDb));
 
     // Delta is for listening to what De-harsh removes, so never blend dry into it.
     mix.setTargetValue (params.deharsh.delta ? 1.0f : juce::jlimit (0.0f, 1.0f, params.mix));
+    nullAmount.setTargetValue (params.nullTest ? 1.0f : 0.0f);
 }
 
 void Engine::setExtraWetLatencyForTesting (int samples)
@@ -147,12 +175,21 @@ void Engine::processChunk (juce::AudioBuffer<float>& buffer, const juce::AudioBu
 
     juce::AudioBuffer<float> wet (buffer.getArrayOfWritePointers(), channels, numSamples);
 
-    // Colour first: preamp, then the console EQ.
+    // Shape the voice before the preamp sees it.
+    toneSwitch.capture (wet);
+    tone.process (wet);
+    toneSwitch.apply (wet);
+
+    // Colour: preamp, then the console EQ.
+    preampSwitch.capture (wet);
     preamp.process (wet);
     eq.process (wet);
+    preampSwitch.apply (wet);
+
     painEngine.process (wet);
 
     // De-harsh, detecting from the vocal itself or from the sidechain.
+    deharshSwitch.capture (wet);
     {
         const bool useSidechain = params.deharshSidechain && sidechain != nullptr && sidechain->getNumChannels() > 0;
         const auto& source = useSidechain ? *sidechain : buffer;
@@ -170,10 +207,16 @@ void Engine::processChunk (juce::AudioBuffer<float>& buffer, const juce::AudioBu
 
         deharsh.process (wet, detector.data(), ! useSidechain);
     }
+    deharshSwitch.apply (wet);
 
     // Glue, then air on top of the levelled voice.
+    compSwitch.capture (wet);
     comp.process (wet);
+    compSwitch.apply (wet);
+
+    airSwitch.capture (wet);
     air.process (wet);
+    airSwitch.apply (wet);
 
     if (testWetLatency > 0)
     {
@@ -188,16 +231,23 @@ void Engine::processChunk (juce::AudioBuffer<float>& buffer, const juce::AudioBu
         }
     }
 
-    // Output gain, then a linear (phase-coherent) dry/wet blend.
+    // Output gain, then a linear (phase-coherent) dry/wet blend. The phase
+    // test then takes the untouched input back out, sample-aligned.
     for (int i = 0; i < numSamples; ++i)
     {
         const float g = outputGain.getNextValue();
         const float m = mix.getNextValue();
+        const float nulling = nullAmount.getNextValue();
 
         for (int ch = 0; ch < channels; ++ch)
         {
+            // Written so that a wet path equal to the dry one gives the dry
+            // signal back exactly, at any Mix.
             auto* data = buffer.getWritePointer (ch);
-            data[i] = data[i] * g * m + dryBuffer.getSample (ch, i) * (1.0f - m);
+            const float dry = dryBuffer.getSample (ch, i);
+            const float processed = data[i] * g;
+            const float out = m >= 1.0f ? processed : dry + (processed - dry) * m;
+            data[i] = nulling > 0.0f ? out - dry * nulling : out;
         }
     }
 }

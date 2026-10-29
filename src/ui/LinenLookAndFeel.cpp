@@ -314,6 +314,100 @@ void LinenPill::paintButton (juce::Graphics& g, bool highlighted, bool)
     g.drawText (getButtonText().toUpperCase(), getLocalBounds().withTrimmedLeft (12), juce::Justification::centred, false);
 }
 
+//==============================================================================
+LinenPower::LinenPower()
+{
+    setClickingTogglesState (true);
+    setMouseCursor (juce::MouseCursor::PointingHandCursor);
+}
+
+void LinenPower::paintButton (juce::Graphics& g, bool highlighted, bool)
+{
+    using namespace palette;
+
+    const auto bounds = getLocalBounds().toFloat();
+    const auto c = bounds.getCentre();
+    const float d = juce::jmin (bounds.getWidth(), bounds.getHeight()) - 2.0f;
+    const auto disc = juce::Rectangle<float> (d, d).withCentre (c);
+    const bool on = getToggleState();
+
+    if (on)
+    {
+        // A soft cobalt bloom, then a champagne cap.
+        juce::ColourGradient bloom (electric.withAlpha (0.3f), c.x, c.y, electric.withAlpha (0.0f), c.x + d * 0.85f, c.y, true);
+        g.setGradientFill (bloom);
+        g.fillEllipse (disc.expanded (d * 0.3f));
+        g.setGradientFill (juce::ColourGradient (champagneLight, disc.getX(), disc.getY(), champagne, disc.getX(), disc.getBottom(), false));
+        g.fillEllipse (disc);
+        g.setColour (champagneDeep.withAlpha (0.8f));
+    }
+    else
+    {
+        g.setColour (highlighted ? ivory : ivory.withAlpha (0.6f));
+        g.fillEllipse (disc);
+        g.setColour (highlighted ? champagneDeep.withAlpha (0.8f) : rim);
+    }
+    g.drawEllipse (disc.reduced (0.4f), 0.8f);
+
+    // The power glyph: an open ring with a bar through its gap.
+    const float r = d * 0.25f;
+    juce::Path glyph;
+    glyph.addCentredArc (c.x, c.y, r, r, 0.0f, 0.7f, juce::MathConstants<float>::twoPi - 0.7f, true);
+    glyph.startNewSubPath (c.x, c.y - r * 1.3f);
+    glyph.lineTo (c.x, c.y - r * 0.2f);
+    g.setColour (on ? cobalt : ink (highlighted ? 0.6f : 0.38f));
+    g.strokePath (glyph, juce::PathStrokeType (1.3f, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
+}
+
+//==============================================================================
+LinenValuePill::LinenValuePill()
+    : juce::Slider (juce::Slider::RotaryHorizontalVerticalDrag, juce::Slider::NoTextBox)
+{
+    setMouseDragSensitivity (180);
+    setVelocityModeParameters (0.6, 1, 0.0, true, juce::ModifierKeys::shiftModifier);
+    setPopupDisplayEnabled (false, false, nullptr);
+    setMouseCursor (juce::MouseCursor::UpDownResizeCursor);
+}
+
+void LinenValuePill::mouseEnter (const juce::MouseEvent& e)
+{
+    hovering = true;
+    juce::Slider::mouseEnter (e);
+    repaint();
+}
+
+void LinenValuePill::mouseExit (const juce::MouseEvent& e)
+{
+    hovering = false;
+    juce::Slider::mouseExit (e);
+    repaint();
+}
+
+void LinenValuePill::paint (juce::Graphics& g)
+{
+    using namespace palette;
+
+    const auto r = getLocalBounds().toFloat().reduced (0.5f);
+    const float radius = r.getHeight() * 0.5f;
+    const bool active = hovering || isMouseButtonDown();
+
+    g.setColour (active ? ivory : ivory.withAlpha (0.65f));
+    g.fillRoundedRectangle (r, radius);
+    g.setColour (active ? champagneDeep.withAlpha (0.8f) : rim);
+    g.drawRoundedRectangle (r, radius, 0.8f);
+
+    // A fine line along the bottom shows where the value sits in its range.
+    const float proportion = (float) valueToProportionOfLength (getValue());
+    const float inset = radius * 0.8f;
+    g.setColour (active ? cobalt.withAlpha (0.8f) : champagneDeep.withAlpha (0.55f));
+    g.fillRoundedRectangle (r.getX() + inset, r.getBottom() - 3.5f, (r.getWidth() - inset * 2.0f) * proportion, 1.4f, 0.7f);
+
+    g.setColour (espresso);
+    g.setFont (fonts::sansMedium (10.0f, 0.06f));
+    g.drawText (getTextFromValue (getValue()), r.reduced (8.0f, 0.0f).withTrimmedBottom (1.0f), juce::Justification::centred, false);
+}
+
+//==============================================================================
 LinenSegmented::LinenSegmented (juce::RangedAudioParameter& param, juce::StringArray labelsToShow)
     : labels (std::move (labelsToShow)),
       attachment (param, [this] (float v) { selected = juce::roundToInt (v); repaint(); })
@@ -411,7 +505,7 @@ void LinenStepper::paint (juce::Graphics& g)
 
     g.setColour (off ? ink (0.42f) : espresso);
     g.setFont (fonts::sansMedium (10.0f, 0.06f));
-    g.drawText (parameter.getCurrentValueAsText(), r.reduced (12.0f, 0.0f), juce::Justification::centred, false);
+    g.drawText (parameter.getCurrentValueAsText(), r.reduced (10.0f, 0.0f), juce::Justification::centred, false);
 }
 
 void LinenStepper::mouseEnter (const juce::MouseEvent&) { hovering = true; repaint(); }

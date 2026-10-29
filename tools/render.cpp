@@ -2,9 +2,10 @@
 //
 //   LinenRender <in.wav> <out.wav> [options]
 //
-//   --input dB  --output dB  --mix 0..1  --block N
+//   --input dB  --output dB  --mix 0..1  --block N  --null 0|1
 //   --silk 0..1  --pain 0..100
-//   --drive 0..1  --hpf 0..4  --low-freq 0..4  --low-gain dB  --mid-freq 0..6  --mid-gain dB  --high-gain dB
+//   --tone-low-freq Hz  --tone-low-gain dB  --tone-high-freq Hz  --tone-high-gain dB
+//   --drive 0..1  --low-freq 0..4  --low-gain dB  --mid-freq 0..6  --mid-gain dB  --high-gain dB
 //   --depth 0..15  --detail 0..1  --attack ms  --release ms  --max-cut dB
 //   --focus-low Hz  --focus-high Hz  --hard 0|1  --glare 0|1  --body 0|1  --delta 0|1
 //
@@ -45,30 +46,34 @@ int main (int argc, char** argv)
 
         auto& d = params.deharsh;
 
-        if (flag == "--input")           params.inputGainDb = value;
-        else if (flag == "--output")     params.outputGainDb = value;
-        else if (flag == "--mix")        params.mix = value;
-        else if (flag == "--block")      blockSize = juce::jmax (1, (int) value);
-        else if (flag == "--silk")       params.silk = value;
-        else if (flag == "--pain")       params.pain = value / 100.0f;
-        else if (flag == "--drive")      params.preampDrive = value;
-        else if (flag == "--hpf")        params.eq.highPass = (int) value;
-        else if (flag == "--low-freq")   params.eq.lowFreq = (int) value;
-        else if (flag == "--low-gain")   params.eq.lowGainDb = value;
-        else if (flag == "--mid-freq")   params.eq.midFreq = (int) value;
-        else if (flag == "--mid-gain")   params.eq.midGainDb = value;
-        else if (flag == "--high-gain")  params.eq.highGainDb = value;
-        else if (flag == "--depth")      d.depth = value;
-        else if (flag == "--detail")     d.detail = value;
-        else if (flag == "--attack")     d.attackMs = value;
-        else if (flag == "--release")    d.releaseMs = value;
-        else if (flag == "--max-cut")    d.maxCutDb = value;
-        else if (flag == "--focus-low")  d.focusLowHz = value;
-        else if (flag == "--focus-high") d.focusHighHz = value;
-        else if (flag == "--hard")       d.hard = value > 0.5f;
-        else if (flag == "--glare")      d.glareFocus = value > 0.5f;
-        else if (flag == "--body")       d.bodyProtect = value > 0.5f;
-        else if (flag == "--delta")      d.delta = value > 0.5f;
+        if (flag == "--input")               params.inputGainDb = value;
+        else if (flag == "--output")         params.outputGainDb = value;
+        else if (flag == "--mix")            params.mix = value;
+        else if (flag == "--block")          blockSize = juce::jmax (1, (int) value);
+        else if (flag == "--silk")           params.silk = value;
+        else if (flag == "--pain")           params.pain = value / 100.0f;
+        else if (flag == "--null")           params.nullTest = value > 0.5f;
+        else if (flag == "--tone-low-freq")  params.tone.lowHz = value;
+        else if (flag == "--tone-low-gain")  params.tone.lowGainDb = value;
+        else if (flag == "--tone-high-freq") params.tone.highHz = value;
+        else if (flag == "--tone-high-gain") params.tone.highGainDb = value;
+        else if (flag == "--drive")          params.preampDrive = value;
+        else if (flag == "--low-freq")       params.eq.lowFreq = (int) value;
+        else if (flag == "--low-gain")       params.eq.lowGainDb = value;
+        else if (flag == "--mid-freq")       params.eq.midFreq = (int) value;
+        else if (flag == "--mid-gain")       params.eq.midGainDb = value;
+        else if (flag == "--high-gain")      params.eq.highGainDb = value;
+        else if (flag == "--depth")          d.depth = value;
+        else if (flag == "--detail")         d.detail = value;
+        else if (flag == "--attack")         d.attackMs = value;
+        else if (flag == "--release")        d.releaseMs = value;
+        else if (flag == "--max-cut")        d.maxCutDb = value;
+        else if (flag == "--focus-low")      d.focusLowHz = value;
+        else if (flag == "--focus-high")     d.focusHighHz = value;
+        else if (flag == "--hard")           d.hard = value > 0.5f;
+        else if (flag == "--glare")          d.glareFocus = value > 0.5f;
+        else if (flag == "--body")           d.bodyProtect = value > 0.5f;
+        else if (flag == "--delta")          d.delta = value > 0.5f;
         else return fail ("unknown option " + flag);
     }
 

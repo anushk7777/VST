@@ -11,7 +11,9 @@ namespace linen
 
 /** The cream display well: the vocal's spectrum as a soft line, and De-harsh's
     gain reduction as a "silk veil" hanging from the top. Two handles set the
-    focus range. Animated on the display's refresh (VBlank), never on a timer. */
+    focus range. The EQ shape (Tone shelves and console EQ) is drawn as a thin
+    cobalt line around the middle, like an EQ plugin's curve. Animated on the
+    display's refresh (VBlank), never on a timer. */
 class SpectrumDisplay final : public juce::Component,
                               public juce::SettableTooltipClient
 {
@@ -39,6 +41,16 @@ public:
     /** Shows a short message (e.g. what Listen did) across the display for a while. */
     void showMessage (const juce::String& text, bool good);
 
+    /** The EQ response to draw, in dB at a frequency. It is read on the
+        message thread, after markEqChanged() (which any thread may call). */
+    void setEqResponse (std::function<float (float hz)> response)
+    {
+        eqResponse = std::move (response);
+        markEqChanged();
+    }
+
+    void markEqChanged() noexcept { eqDirty.store (true); }
+
 private:
     enum class Handle { none, low, high };
 
@@ -47,6 +59,8 @@ private:
     float hzForX (float x) const;
     float yForLevel (float db) const;
     float yForCut (float db) const;
+    float yForEq (float db) const;
+    void updateEqCurve();
     Handle handleAt (juce::Point<float> p) const;
 
     DeharshDisplay& source;
@@ -56,6 +70,12 @@ private:
     float focusLowHz = 120.0f, focusHighHz = 18000.0f;
 
     std::array<float, DeharshDisplay::numPoints> level {}, cut {};
+
+    static constexpr int numEqPoints = 96;
+    std::function<float (float)> eqResponse;
+    std::atomic<bool> eqDirty { true };
+    std::array<float, numEqPoints> eqDb {};
+    bool eqVisible = false;
     std::function<Context()> contextSource;
     Context context;
     float backlight = 0.0f, listenGlow = 0.0f;

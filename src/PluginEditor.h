@@ -25,10 +25,12 @@ public:
 
 private:
     /** The fixed-size canvas holding every control. */
-    class Canvas final : public juce::Component
+    class Canvas final : public juce::Component,
+                         private juce::AudioProcessorValueTreeState::Listener
     {
     public:
         explicit Canvas (LinenAudioProcessor&);
+        ~Canvas() override;
 
         void paint (juce::Graphics&) override;
         void resized() override;
@@ -57,24 +59,29 @@ private:
             juce::Rectangle<int> bounds;
             melatonin::DropShadow shadow { { linen::palette::espresso.withAlpha (0.09f), 18, { 0, 6 } },
                                            { linen::palette::espresso.withAlpha (0.05f), 3, { 0, 1 } } };
-            bool dims = true;   // fades with Delta
+            bool dims = true;                        // fades with Delta
+            const char* powerId = nullptr;           // the section's power switch, if it has one
+            std::vector<juce::Component*> members;   // fade with the card
+            float alpha = 1.0f;
         };
 
         using SliderAttachment = juce::AudioProcessorValueTreeState::SliderAttachment;
         using ButtonAttachment = juce::AudioProcessorValueTreeState::ButtonAttachment;
 
-        void attach (linen::LinenKnob&, const char* paramId, const juce::String& tooltip);
-        void attach (linen::LinenPill&, const char* paramId, const juce::String& tooltip);
+        void attach (juce::Slider&, const char* paramId, const juce::String& tooltip);
+        void attach (juce::Button&, const char* paramId, const juce::String& tooltip);
+        void parameterChanged (const juce::String& parameterID, float newValue) override;
         void paintHeader (juce::Graphics&);
         void paintCard (juce::Graphics&, Card&);
-        void updateDimming (double timestampSeconds);
-        std::vector<juce::Component*> dimmable();
+        void updateDimming (double timestampSeconds, bool instantly = false);
         float param (const char* paramId) const;
+        bool isOn (const char* powerId) const { return param (powerId) > 0.5f; }
         float presence() const;
+        static int titleX (const Card&);
 
         LinenAudioProcessor& processor;
         linen::Backdrop backdrop;
-        std::array<Card, 5> cards;   // preamp, comp, de-harsh, air, output
+        std::array<Card, 6> cards;   // tone, preamp, comp, de-harsh, air, output
 
         linen::SpectrumDisplay display;
 
@@ -83,10 +90,14 @@ private:
         linen::ListenButton listenButton;
         linen::LinenKnob pain { "Pain", 54.0f }, silk { "Silk", 54.0f };
 
+        // Tone: shelves before the preamp
+        linen::LinenKnob toneLow { "Low shelf", 52.0f }, toneHigh { "High shelf", 52.0f };
+        linen::LinenValuePill toneLowFreq, toneHighFreq;
+
         // Preamp + 1073-style EQ
-        linen::LinenKnob drive { "Drive", 74.0f };
-        linen::LinenKnob lowGain { "Low", 52.0f }, midGain { "Mid", 52.0f }, highGain { "High 12k", 52.0f };
-        linen::LinenStepper highPass, lowFreq, midFreq;
+        linen::LinenKnob drive { "Drive", 66.0f };
+        linen::LinenKnob lowGain { "Low", 48.0f }, midGain { "Mid", 48.0f }, highGain { "High 12k", 48.0f };
+        linen::LinenStepper lowFreq, midFreq;
 
         // Silk compressor
         linen::LinenKnob cotton { "Cotton", 62.0f };
@@ -104,11 +115,15 @@ private:
         // Air
         linen::LinenKnob air { "Air", 52.0f }, deEss { "De-ess", 52.0f };
 
-        // Output
+        // Output, and the phase test
         linen::LinenKnob input { "Input", 50.0f }, mix { "Mix", 50.0f }, output { "Output", 50.0f };
+        linen::LinenPill nullTest { "Null" };
+
+        // A power switch for each section.
+        linen::LinenPower tonePower, preampPower, compPower, deharshPower, airPower;
 
         // Jewel lamps, one per section, and the brand jewel.
-        linen::LinenLamp preampLamp, compLamp, deharshLamp, airLamp, outputLamp, brandLamp;
+        linen::LinenLamp toneLamp, preampLamp, compLamp, deharshLamp, airLamp, outputLamp, brandLamp;
 
         std::vector<std::unique_ptr<SliderAttachment>> sliderAttachments;
         std::vector<std::unique_ptr<ButtonAttachment>> buttonAttachments;
@@ -117,8 +132,8 @@ private:
         float scorch = 0.0f;
         juce::ParameterAttachment painWatch;
 
-        // Delta dims everything but De-harsh so the ear (and eye) stay on it.
-        float dim = 1.0f;
+        // Delta dims everything but De-harsh so the ear (and eye) stay on it;
+        // a section switched off fades back too.
         double lastTick = 0.0, clock = 0.0;
         juce::VBlankAttachment vblank;
     };

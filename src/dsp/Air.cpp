@@ -8,7 +8,7 @@ namespace
     constexpr int controlInterval = 16;
     constexpr float shelfHz = 10000.0f;
     constexpr float maxAirDb = 6.0f, maxBreathLiftDb = 3.0f, maxDeEssDb = 6.0f;
-    constexpr float maxExciter = 0.18f;
+    constexpr float maxExciter = 0.07f;   // sparkle sits about 26 dB under the 5-10 kHz band at 100%
 
     float toDb (float power) { return 10.0f * std::log10 (power + 1.0e-12f); }
 }

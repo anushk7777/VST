@@ -8,9 +8,11 @@ namespace
     constexpr float makeupReferenceDb = -14.0f;  // a typical sung vocal's RMS
     constexpr int textureInterval = 16;
 
-    // Cotton tuning.
+    // Cotton tuning. The harmonics are a whisper (about -42 dB at 100% and
+    // 10 dB of gain reduction on a -6 dBFS vocal): the texture is felt, not
+    // heard as distortion. Most of Cotton is the warmth and the softer top.
     constexpr float colourFullAtDb = 10.0f;      // gain reduction where the harmonics are fully in
-    constexpr float colourScale = 0.55f;
+    constexpr float colourScale = 0.055f;
     constexpr float textureFullAtDb = 12.0f;
     constexpr float warmthDb = 2.0f;             // low-mid bell at full texture
     constexpr float softenDb = -3.0f;            // top shelf at full texture
@@ -45,6 +47,13 @@ float SilkCompressor::staticGainDb (float inputDb, float thresholdDb, float rati
 
     const float x = over + kneeDb * 0.5f;
     return slope * x * x / (2.0f * kneeDb);
+}
+
+float SilkCompressor::makeupDb (const CompParams& p)
+{
+    // Most (not all) of the reduction a typical vocal sees, so the level
+    // stays close while the compressor still sounds like it is working.
+    return p.autoMakeup ? -0.6f * staticGainDb (makeupReferenceDb, p.thresholdDb, p.ratio) : 0.0f;
 }
 
 void SilkCompressor::prepare (double newSampleRate, int maxBlockSize, int newNumChannels)
@@ -147,8 +156,7 @@ void SilkCompressor::process (juce::AudioBuffer<float>& buffer)
     const float cotton = juce::jlimit (0.0f, 1.0f, params.cotton);
     const float norm = 1.0f / (float) chans;
 
-    const float makeupDb = params.autoMakeup ? -0.6f * staticGainDb (makeupReferenceDb, params.thresholdDb, params.ratio) : 0.0f;
-    makeup.setTargetValue (juce::Decibels::decibelsToGain (makeupDb));
+    makeup.setTargetValue (juce::Decibels::decibelsToGain (makeupDb (params)));
     mix.setTargetValue (juce::jlimit (0.0f, 1.0f, params.mix));
 
     // 1. Detector and the two-stage, memory-dependent release.

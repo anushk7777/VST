@@ -5,7 +5,11 @@
 #include "dsp/LinenEngine.h"
 
 /** The plugin's whole parameter layout lives here, in one place.
-    IDs are permanent: renaming one breaks saved sessions and automation. */
+    IDs are permanent: renaming one breaks saved sessions and automation.
+
+    Every default is neutral: a fresh Linen (the "Clean" preset) passes the
+    audio through bit-exactly, delayed by its latency. Each knob then works
+    on its own from there. */
 namespace linen::params
 {
 
@@ -17,14 +21,23 @@ namespace id
     inline constexpr auto silk       = "silk";
     inline constexpr auto pain       = "pain";
 
+    inline constexpr auto nullTest   = "null_test";
+
+    inline constexpr auto toneOn       = "tone_on";
+    inline constexpr auto toneLowFreq  = "tone_low_freq";
+    inline constexpr auto toneLowGain  = "tone_low_gain";
+    inline constexpr auto toneHighFreq = "tone_high_freq";
+    inline constexpr auto toneHighGain = "tone_high_gain";
+
+    inline constexpr auto preampOn    = "preamp_on";
     inline constexpr auto preampDrive = "preamp_drive";
-    inline constexpr auto eqHighPass  = "eq_high_pass";
     inline constexpr auto eqLowFreq   = "eq_low_freq";
     inline constexpr auto eqLowGain   = "eq_low_gain";
     inline constexpr auto eqMidFreq   = "eq_mid_freq";
     inline constexpr auto eqMidGain   = "eq_mid_gain";
     inline constexpr auto eqHighGain  = "eq_high_gain";
 
+    inline constexpr auto deharshOn        = "deharsh_on";
     inline constexpr auto deharshDepth     = "deharsh_depth";
     inline constexpr auto deharshDetail    = "deharsh_detail";
     inline constexpr auto deharshAttack    = "deharsh_attack";
@@ -38,6 +51,7 @@ namespace id
     inline constexpr auto deharshDelta     = "deharsh_delta";
     inline constexpr auto deharshSidechain = "deharsh_sidechain";
 
+    inline constexpr auto compOn        = "comp_on";
     inline constexpr auto compThreshold = "comp_threshold";
     inline constexpr auto compRatio     = "comp_ratio";
     inline constexpr auto compAttack    = "comp_attack";
@@ -46,11 +60,13 @@ namespace id
     inline constexpr auto compMix       = "comp_mix";
     inline constexpr auto compCotton    = "comp_cotton";
 
+    inline constexpr auto airOn     = "air_on";
     inline constexpr auto airAmount = "air_amount";
     inline constexpr auto airDeEss  = "air_deess";
 }
 
-inline constexpr int version = 1;
+inline constexpr int version = 1;      // parameters since 0.1
+inline constexpr int version2 = 2;     // added in 0.2: Tone, power switches, Null
 
 inline juce::String formatDb (float value, int)
 {
@@ -120,17 +136,42 @@ inline juce::AudioProcessorValueTreeState::ParameterLayout createLayout()
                                                .withValueFromStringFunction ([] (const juce::String& text)
                                                                              { return text.getFloatValue() / 100.0f; });
 
-    // Preamp and 1073-style EQ
-    const auto eqGain = [] (float range)
+    layout.add (std::make_unique<Bool> (juce::ParameterID { id::nullTest, version2 }, "Null Test", false));
+
+    // Gains in dB, centred on 0.
+    const auto gainDb = [] (float range)
     {
         return std::pair { juce::NormalisableRange<float> (-range, range, 0.1f),
                            Attributes().withLabel ("dB").withStringFromValueFunction (formatDb) };
     };
+    const auto hzAttributes = Attributes().withLabel ("Hz").withStringFromValueFunction (formatHz);
 
+    // Tone: Pro-Q-style shelves before the preamp (frequency knobs are log-like).
+    using linen::ToneParams;
+    layout.add (std::make_unique<Bool> (juce::ParameterID { id::toneOn, version2 }, "Tone On", true));
+    layout.add (std::make_unique<Float> (juce::ParameterID { id::toneLowFreq, version2 }, "Tone Low Shelf Freq",
+                                         centredRange (ToneParams::minLowHz, ToneParams::maxLowHz,
+                                                       std::sqrt (ToneParams::minLowHz * ToneParams::maxLowHz), 0.1f),
+                                         ToneParams().lowHz, hzAttributes));
+    {
+        auto [range, attributes] = gainDb (ToneParams::maxGainDb);
+        layout.add (std::make_unique<Float> (juce::ParameterID { id::toneLowGain, version2 }, "Tone Low Shelf Gain", range, 0.0f, attributes));
+    }
+    layout.add (std::make_unique<Float> (juce::ParameterID { id::toneHighFreq, version2 }, "Tone High Shelf Freq",
+                                         centredRange (ToneParams::minHighHz, ToneParams::maxHighHz,
+                                                       std::sqrt (ToneParams::minHighHz * ToneParams::maxHighHz), 1.0f),
+                                         ToneParams().highHz, hzAttributes));
+    {
+        auto [range, attributes] = gainDb (ToneParams::maxGainDb);
+        layout.add (std::make_unique<Float> (juce::ParameterID { id::toneHighGain, version2 }, "Tone High Shelf Gain", range, 0.0f, attributes));
+    }
+
+    // Preamp and 1073-style EQ
+    const auto eqGain = gainDb;
+
+    layout.add (std::make_unique<Bool> (juce::ParameterID { id::preampOn, version2 }, "Preamp On", true));
     layout.add (std::make_unique<Float> (juce::ParameterID { id::preampDrive, version }, "Preamp Drive",
-                                         juce::NormalisableRange<float> (0.0f, 1.0f, 0.001f), 0.25f, percentAttributes));
-    layout.add (std::make_unique<Choice> (juce::ParameterID { id::eqHighPass, version }, "EQ High-pass",
-                                          juce::StringArray { "Off", "50 Hz", "80 Hz", "160 Hz", "300 Hz" }, 0));
+                                         juce::NormalisableRange<float> (0.0f, 1.0f, 0.001f), 0.0f, percentAttributes));
     layout.add (std::make_unique<Choice> (juce::ParameterID { id::eqLowFreq, version }, "EQ Low Freq",
                                           juce::StringArray { "Off", "35 Hz", "60 Hz", "110 Hz", "220 Hz" }, 2));
     {
@@ -149,9 +190,9 @@ inline juce::AudioProcessorValueTreeState::ParameterLayout createLayout()
     }
 
     // De-harsh
-
+    layout.add (std::make_unique<Bool> (juce::ParameterID { id::deharshOn, version2 }, "De-harsh On", true));
     layout.add (std::make_unique<Float> (juce::ParameterID { id::deharshDepth, version }, "De-harsh Depth",
-                                         juce::NormalisableRange<float> (0.0f, 15.0f, 0.01f), 5.0f,
+                                         juce::NormalisableRange<float> (0.0f, 15.0f, 0.01f), 0.0f,
                                          Attributes().withStringFromValueFunction ([] (float v, int) { return juce::String (v, 1); })));
     layout.add (std::make_unique<Float> (juce::ParameterID { id::deharshDetail, version }, "De-harsh Detail",
                                          juce::NormalisableRange<float> (0.0f, 1.0f, 0.001f), 0.5f, percentAttributes));
@@ -178,12 +219,13 @@ inline juce::AudioProcessorValueTreeState::ParameterLayout createLayout()
     layout.add (std::make_unique<Bool> (juce::ParameterID { id::deharshDelta, version }, "De-harsh Delta", false));
     layout.add (std::make_unique<Bool> (juce::ParameterID { id::deharshSidechain, version }, "De-harsh Sidechain", false));
 
-    // Silk compressor
+    // Silk compressor (ratio 1:1 = not compressing)
+    layout.add (std::make_unique<Bool> (juce::ParameterID { id::compOn, version2 }, "Comp On", true));
     layout.add (std::make_unique<Float> (juce::ParameterID { id::compThreshold, version }, "Comp Threshold",
                                          juce::NormalisableRange<float> (-48.0f, 0.0f, 0.1f), -18.0f,
                                          Attributes().withLabel ("dB").withStringFromValueFunction (formatDb)));
     layout.add (std::make_unique<Float> (juce::ParameterID { id::compRatio, version }, "Comp Ratio",
-                                         centredRange (1.0f, 6.0f, 2.5f, 0.01f), 2.0f,
+                                         centredRange (1.0f, 6.0f, 2.5f, 0.01f), 1.0f,
                                          Attributes().withStringFromValueFunction ([] (float v, int)
                                                                                    { return juce::String (v, 1) + ":1"; })));
     layout.add (std::make_unique<Float> (juce::ParameterID { id::compAttack, version }, "Comp Attack",
@@ -196,13 +238,14 @@ inline juce::AudioProcessorValueTreeState::ParameterLayout createLayout()
     layout.add (std::make_unique<Float> (juce::ParameterID { id::compMix, version }, "Comp Mix",
                                          juce::NormalisableRange<float> (0.0f, 1.0f, 0.001f), 1.0f, percentAttributes));
     layout.add (std::make_unique<Float> (juce::ParameterID { id::compCotton, version }, "Comp Cotton",
-                                         juce::NormalisableRange<float> (0.0f, 1.0f, 0.001f), 0.5f, percentAttributes));
+                                         juce::NormalisableRange<float> (0.0f, 1.0f, 0.001f), 0.0f, percentAttributes));
 
     // Air
+    layout.add (std::make_unique<Bool> (juce::ParameterID { id::airOn, version2 }, "Air On", true));
     layout.add (std::make_unique<Float> (juce::ParameterID { id::airAmount, version }, "Air",
-                                         juce::NormalisableRange<float> (0.0f, 1.0f, 0.001f), 0.3f, percentAttributes));
+                                         juce::NormalisableRange<float> (0.0f, 1.0f, 0.001f), 0.0f, percentAttributes));
     layout.add (std::make_unique<Float> (juce::ParameterID { id::airDeEss, version }, "Air De-ess",
-                                         juce::NormalisableRange<float> (0.0f, 1.0f, 0.001f), 0.5f, percentAttributes));
+                                         juce::NormalisableRange<float> (0.0f, 1.0f, 0.001f), 0.0f, percentAttributes));
 
     return layout;
 }
@@ -216,13 +259,20 @@ struct Handles
           mix              (*state.getRawParameterValue (id::mix)),
           silk             (*state.getRawParameterValue (id::silk)),
           pain             (*state.getRawParameterValue (id::pain)),
+          nullTest         (*state.getRawParameterValue (id::nullTest)),
+          toneOn           (*state.getRawParameterValue (id::toneOn)),
+          toneLowFreq      (*state.getRawParameterValue (id::toneLowFreq)),
+          toneLowGain      (*state.getRawParameterValue (id::toneLowGain)),
+          toneHighFreq     (*state.getRawParameterValue (id::toneHighFreq)),
+          toneHighGain     (*state.getRawParameterValue (id::toneHighGain)),
+          preampOn         (*state.getRawParameterValue (id::preampOn)),
           preampDrive      (*state.getRawParameterValue (id::preampDrive)),
-          eqHighPass       (*state.getRawParameterValue (id::eqHighPass)),
           eqLowFreq        (*state.getRawParameterValue (id::eqLowFreq)),
           eqLowGain        (*state.getRawParameterValue (id::eqLowGain)),
           eqMidFreq        (*state.getRawParameterValue (id::eqMidFreq)),
           eqMidGain        (*state.getRawParameterValue (id::eqMidGain)),
           eqHighGain       (*state.getRawParameterValue (id::eqHighGain)),
+          deharshOn        (*state.getRawParameterValue (id::deharshOn)),
           deharshDepth     (*state.getRawParameterValue (id::deharshDepth)),
           deharshDetail    (*state.getRawParameterValue (id::deharshDetail)),
           deharshAttack    (*state.getRawParameterValue (id::deharshAttack)),
@@ -235,6 +285,7 @@ struct Handles
           deharshBody      (*state.getRawParameterValue (id::deharshBody)),
           deharshDelta     (*state.getRawParameterValue (id::deharshDelta)),
           deharshSidechain (*state.getRawParameterValue (id::deharshSidechain)),
+          compOn           (*state.getRawParameterValue (id::compOn)),
           compThreshold    (*state.getRawParameterValue (id::compThreshold)),
           compRatio        (*state.getRawParameterValue (id::compRatio)),
           compAttack       (*state.getRawParameterValue (id::compAttack)),
@@ -242,6 +293,7 @@ struct Handles
           compMakeup       (*state.getRawParameterValue (id::compMakeup)),
           compMix          (*state.getRawParameterValue (id::compMix)),
           compCotton       (*state.getRawParameterValue (id::compCotton)),
+          airOn            (*state.getRawParameterValue (id::airOn)),
           airAmount        (*state.getRawParameterValue (id::airAmount)),
           airDeEss         (*state.getRawParameterValue (id::airDeEss))
     {
@@ -255,9 +307,20 @@ struct Handles
         p.mix          = mix.load();
         p.silk         = silk.load();
         p.pain         = pain.load();
+        p.nullTest     = nullTest.load() > 0.5f;
+
+        p.sections.tone    = toneOn.load() > 0.5f;
+        p.sections.preamp  = preampOn.load() > 0.5f;
+        p.sections.deharsh = deharshOn.load() > 0.5f;
+        p.sections.comp    = compOn.load() > 0.5f;
+        p.sections.air     = airOn.load() > 0.5f;
+
+        p.tone.lowHz      = toneLowFreq.load();
+        p.tone.lowGainDb  = toneLowGain.load();
+        p.tone.highHz     = toneHighFreq.load();
+        p.tone.highGainDb = toneHighGain.load();
 
         p.preampDrive  = preampDrive.load();
-        p.eq.highPass   = juce::roundToInt (eqHighPass.load());
         p.eq.lowFreq    = juce::roundToInt (eqLowFreq.load());
         p.eq.lowGainDb  = eqLowGain.load();
         p.eq.midFreq    = juce::roundToInt (eqMidFreq.load());
@@ -296,13 +359,20 @@ struct Handles
     std::atomic<float>& mix;
     std::atomic<float>& silk;
     std::atomic<float>& pain;
+    std::atomic<float>& nullTest;
+    std::atomic<float>& toneOn;
+    std::atomic<float>& toneLowFreq;
+    std::atomic<float>& toneLowGain;
+    std::atomic<float>& toneHighFreq;
+    std::atomic<float>& toneHighGain;
+    std::atomic<float>& preampOn;
     std::atomic<float>& preampDrive;
-    std::atomic<float>& eqHighPass;
     std::atomic<float>& eqLowFreq;
     std::atomic<float>& eqLowGain;
     std::atomic<float>& eqMidFreq;
     std::atomic<float>& eqMidGain;
     std::atomic<float>& eqHighGain;
+    std::atomic<float>& deharshOn;
     std::atomic<float>& deharshDepth;
     std::atomic<float>& deharshDetail;
     std::atomic<float>& deharshAttack;
@@ -315,6 +385,7 @@ struct Handles
     std::atomic<float>& deharshBody;
     std::atomic<float>& deharshDelta;
     std::atomic<float>& deharshSidechain;
+    std::atomic<float>& compOn;
     std::atomic<float>& compThreshold;
     std::atomic<float>& compRatio;
     std::atomic<float>& compAttack;
@@ -322,6 +393,7 @@ struct Handles
     std::atomic<float>& compMakeup;
     std::atomic<float>& compMix;
     std::atomic<float>& compCotton;
+    std::atomic<float>& airOn;
     std::atomic<float>& airAmount;
     std::atomic<float>& airDeEss;
 };

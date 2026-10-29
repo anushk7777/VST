@@ -26,22 +26,29 @@ inline juce::AudioBuffer<float> impulse (int channels, int samples, int position
     return buffer;
 }
 
+/** Calls process on consecutive pieces of audio in irregular sizes (up to
+    maxBlock), the way a host might. */
+template <typename Process>
+void forEachIrregularBlock (juce::AudioBuffer<float>& audio, int maxBlock, Process&& process)
+{
+    const int sizes[] { maxBlock, 1, maxBlock / 2, 17, maxBlock - 3 };
+    int pos = 0, which = 0;
+
+    while (pos < audio.getNumSamples())
+    {
+        const int n = juce::jmin (juce::jmax (1, sizes[which++ % 5]), audio.getNumSamples() - pos);
+        juce::AudioBuffer<float> block (audio.getArrayOfWritePointers(), audio.getNumChannels(), pos, n);
+        process (block);
+        pos += n;
+    }
+}
+
 /** Runs a whole buffer through the engine in irregular block sizes, the way a
     host might, and returns the result. */
 inline juce::AudioBuffer<float> runInBlocks (Engine& engine, const juce::AudioBuffer<float>& input, int maxBlock)
 {
     juce::AudioBuffer<float> output (input);
-    const int sizes[] { maxBlock, 1, maxBlock / 2, 17, maxBlock - 3 };
-    int pos = 0, which = 0;
-
-    while (pos < output.getNumSamples())
-    {
-        const int n = juce::jmin (juce::jmax (1, sizes[which++ % 5]), output.getNumSamples() - pos);
-        juce::AudioBuffer<float> block (output.getArrayOfWritePointers(), output.getNumChannels(), pos, n);
-        engine.process (block);
-        pos += n;
-    }
-
+    forEachIrregularBlock (output, maxBlock, [&engine] (juce::AudioBuffer<float>& block) { engine.process (block); });
     return output;
 }
 
@@ -139,6 +146,56 @@ inline double toneDb (const juce::AudioBuffer<float>& audio, double hz, int star
         wsum += w;
     }
     return 20.0 * std::log10 (2.0 * std::sqrt (re * re + im * im) / wsum + 1.0e-20);
+}
+
+/** Total harmonic distortion in dB relative to the fundamental: harmonics 2-9
+    (those below 0.45 × the sample rate), each read with toneDb(). */
+inline double thdDb (const juce::AudioBuffer<float>& audio, double f0, int start = 16384, int length = 32768, double sampleRate = 48000.0)
+{
+    double power = 0.0;
+    for (int n = 2; n <= 9 && n * f0 < sampleRate * 0.45; ++n)
+        power += std::pow (10.0, toneDb (audio, n * f0, start, length, sampleRate) / 10.0);
+    return 10.0 * std::log10 (power + 1.0e-30) - toneDb (audio, f0, start, length, sampleRate);
+}
+
+/** A sine (phase computed in double, so it has no spurs of its own). */
+inline juce::AudioBuffer<float> sineWave (double hz, float peakDb, int samples, double sampleRate = 48000.0, int channels = 1)
+{
+    juce::AudioBuffer<float> buffer (channels, samples);
+    const double amp = juce::Decibels::decibelsToGain ((double) peakDb);
+    for (int i = 0; i < samples; ++i)
+    {
+        const auto v = (float) (amp * std::sin (juce::MathConstants<double>::twoPi * hz * i / sampleRate));
+        for (int ch = 0; ch < channels; ++ch)
+            buffer.setSample (ch, i, v);
+    }
+    return buffer;
+}
+
+/** A logarithmic sweep, 20 Hz to 20 kHz, at full scale (peaks at exactly ±1). */
+inline juce::AudioBuffer<float> fullScaleSweep (int samples, double sampleRate = 48000.0, int channels = 2)
+{
+    juce::AudioBuffer<float> buffer (channels, samples);
+    const double f0 = 20.0, f1 = juce::jmin (20000.0, sampleRate * 0.45), duration = samples / sampleRate;
+    const double k = std::log (f1 / f0);
+    for (int i = 0; i < samples; ++i)
+    {
+        const double t = i / sampleRate;
+        const double phase = juce::MathConstants<double>::twoPi * f0 * duration / k * (std::exp (k * t / duration) - 1.0);
+        for (int ch = 0; ch < channels; ++ch)
+            buffer.setSample (ch, i, (float) std::sin (phase + ch * 0.5));
+    }
+    return buffer;
+}
+
+/** True if b equals a delayed by offset, bit for bit (over the samples both have). */
+inline bool identicalAfter (const juce::AudioBuffer<float>& a, const juce::AudioBuffer<float>& b, int offset)
+{
+    for (int ch = 0; ch < a.getNumChannels(); ++ch)
+        for (int i = 0; i + offset < b.getNumSamples() && i < a.getNumSamples(); ++i)
+            if (! juce::exactlyEqual (a.getSample (ch, i), b.getSample (ch, i + offset)))
+                return false;
+    return true;
 }
 
 } // namespace linen::test

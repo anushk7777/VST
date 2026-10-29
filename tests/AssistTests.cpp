@@ -40,7 +40,8 @@ namespace
              + ", res " + juce::String (r.resonanceDb, 1) + ", dull " + juce::String (r.dullDb, 1) + ", sib " + juce::String (r.sibilanceDb, 1)
              + " -> depth " + juce::String (r.deharshDepth, 1) + ", low " + juce::String (r.lowGainDb, 1) + ", 12k " + juce::String (r.highGainDb, 1)
              + ", air " + juce::String (r.airAmount, 2) + ", de-ess " + juce::String (r.airDeEss, 2) + ", in " + juce::String (r.inputGainDb, 1)
-             + ", thr " + juce::String (r.compThresholdDb, 1) + ", hpf " + juce::String (r.highPass);
+             + ", thr " + juce::String (r.compThresholdDb, 1) + ", tone low " + juce::String (r.toneLowGainDb, 1)
+             + " dB @ " + juce::String (r.toneLowHz, 0) + " Hz";
     }
 }
 
@@ -59,7 +60,8 @@ public:
             expect (base.valid);
             expect (base.summary.isNotEmpty());
             expectWithinAbsoluteError (base.pitchHz, 235.0f, 40.0f, "median of the sung notes");
-            expectEquals (base.highPass, 2, "80 Hz for a voice singing around 200-300 Hz");
+            expect (base.toneLowHz >= 110.0f && base.toneLowHz <= 160.0f, "low shelf just under notes sung around 200-300 Hz");
+            expectLessThan (base.toneLowGainDb, 0.0f, "...clearing the rumble under the voice");
             expect (base.deharshDepth >= 3.0f && base.deharshDepth <= 10.0f);
             expect (base.compThresholdDb >= -36.0f && base.compThresholdDb <= -6.0f);
             expect (base.airDeEss >= 0.2f && base.airDeEss <= 0.9f);
@@ -91,8 +93,9 @@ public:
             filter (b, { Biquad::Coeffs::peak (sr, 300.0, 1.0, 6.0) });
             const auto r = listen (b);
             logMessage ("muddy:    " + describe (r));
-            expectLessThan (r.lowGainDb, 0.0f);
-            expectEquals (r.lowFreq, 4, "at 220 Hz");
+            expectGreaterOrEqual (r.toneLowHz, 250.0f, "the Tone low shelf moves up into the mud");
+            expectLessThan (r.toneLowGainDb, 0.0f);
+            expectLessOrEqual (r.lowGainDb, 0.0f, "and the console adds no weight");
         }
 
         beginTest ("A quiet recording gets brought up to level");

@@ -78,17 +78,45 @@ public:
 
             const auto in = whiteNoise (2, 24000);
             const auto out = runPreamp (0.0f, in);
-            expectLessOrEqual (maxAbsDifference (in, out, latency), 1.0e-7f);
+            expect (identicalAfter (in, out, latency), "bit-exact");
         }
 
-        beginTest ("Warmth is mostly 2nd harmonic, and audible but not fuzzy");
+        beginTest ("House drive (30%) stays clean on a normally recorded vocal");
         {
-            const auto out = runPreamp (0.5f, sine (220.0f, -12.0f, 65536));
-            const double h1 = toneDb (out, 220.0), h2 = toneDb (out, 440.0), h3 = toneDb (out, 660.0);
-            logMessage ("H2 " + juce::String (h2 - h1, 1) + " dB, H3 " + juce::String (h3 - h1, 1) + " dB re fundamental");
-            expectGreaterThan (h2, h3, "2nd harmonic should lead");
-            expectGreaterThan (h2 - h1, -45.0, "should be audible");
-            expectLessThan (h2 - h1, -25.0, "should not be fuzz");
+            // A belted note peaking at -6 dBFS, a hot one at -1 dBFS, and a low note.
+            const double belt = thdDb (runPreamp (0.3f, sine (1000.0f, -6.0f, 65536)), 1000.0);
+            const double hot = thdDb (runPreamp (0.3f, sine (1000.0f, -1.0f, 65536)), 1000.0);
+            const double low = thdDb (runPreamp (0.3f, sine (100.0f, -6.0f, 65536)), 100.0);
+            logMessage ("THD at 30%: 1 kHz -6 dBFS " + juce::String (belt, 1) + " dB, -1 dBFS " + juce::String (hot, 1)
+                        + " dB, 100 Hz -6 dBFS " + juce::String (low, 1) + " dB");
+            expectLessThan (belt, -55.0);
+            expectLessThan (hot, -48.0);
+            expectLessThan (low, -50.0);
+        }
+
+        beginTest ("Full drive is warm, never fuzz: mostly 2nd harmonic, -40 to -28 dB on a -6 dBFS note");
+        {
+            const auto out = runPreamp (1.0f, sine (1000.0f, -6.0f, 65536));
+            const double h1 = toneDb (out, 1000.0), h2 = toneDb (out, 2000.0), h3 = toneDb (out, 3000.0);
+            const double thd = thdDb (out, 1000.0);
+            logMessage ("THD " + juce::String (thd, 1) + " dB, H2 " + juce::String (h2 - h1, 1) + " dB, H3 " + juce::String (h3 - h1, 1) + " dB");
+            expectGreaterThan (h2, h3 + 10.0, "2nd harmonic should lead");
+            expectGreaterThan (thd, -40.0, "audible colour at the top of the knob");
+            expectLessThan (thd, -28.0, "...but never fuzz");
+        }
+
+        beginTest ("Drive rises evenly: each step up the knob adds colour");
+        {
+            double last = -200.0;
+            juce::String report;
+            for (const float drive : { 0.1f, 0.3f, 0.5f, 0.7f, 0.9f })
+            {
+                const double thd = thdDb (runPreamp (drive, sine (1000.0f, -6.0f, 65536)), 1000.0);
+                report << juce::roundToInt (drive * 100) << "%: " << juce::String (thd, 1) << " dB  ";
+                expectGreaterThan (thd, last + 4.0, "drive " + juce::String (drive));
+                last = thd;
+            }
+            logMessage (report);
         }
 
         beginTest ("Drive changes colour, not loudness (small-signal gain is 1)");
@@ -102,7 +130,7 @@ public:
 
         beginTest ("4x oversampling keeps aliasing below -90 dB");
         {
-            const auto out = runPreamp (0.6f, sine (9000.0f, -12.0f, 65536));
+            const auto out = runPreamp (1.0f, sine (9000.0f, -6.0f, 65536));
             const double spur = worstSpurDb (out, 9000.0);
             logMessage ("worst spur: " + juce::String (spur, 1) + " dB");
             expectLessThan (spur, -90.0);
@@ -110,8 +138,8 @@ public:
 
         beginTest ("Loud notes bloom: more 2nd harmonic when belted than when soft");
         {
-            const auto loud = runPreamp (0.4f, sine (300.0f, -6.0f, 65536));
-            const auto soft = runPreamp (0.4f, sine (300.0f, -30.0f, 65536));
+            const auto loud = runPreamp (0.7f, sine (300.0f, -6.0f, 65536));
+            const auto soft = runPreamp (0.7f, sine (300.0f, -30.0f, 65536));
             const double loudH2 = toneDb (loud, 600.0) - toneDb (loud, 300.0);
             const double softH2 = toneDb (soft, 600.0) - toneDb (soft, 300.0);
             logMessage ("H2 loud " + juce::String (loudH2, 1) + " dB, soft " + juce::String (softH2, 1) + " dB");
@@ -192,27 +220,10 @@ public:
             expectWithinAbsoluteError (eq.magnitudeDb (500.0), 0.0, 0.25);
         }
 
-        beginTest ("High-pass is -3 dB at the corner and 18 dB/oct below");
-        {
-            for (int f = 1; f < (int) EqParams::highPassHz.size(); ++f)
-            {
-                Eq1073 eq;
-                EqParams p;
-                p.highPass = f;
-                eq.setParams (p);
-                eq.prepare (sr, 1);
-                const double hz = EqParams::highPassHz[(size_t) f];
-                expectWithinAbsoluteError (eq.magnitudeDb (hz), -3.0, 0.5, juce::String (hz) + " Hz corner");
-                expectWithinAbsoluteError (eq.magnitudeDb (hz / 2.0), -18.0, 1.5, "one octave below");
-                expectWithinAbsoluteError (eq.magnitudeDb (hz * 8.0), 0.0, 0.1);
-            }
-        }
-
         beginTest ("The processed audio matches the designed response");
         {
             Eq1073 eq;
             EqParams p;
-            p.highPass = 2;
             p.lowFreq = 3;
             p.lowGainDb = 4.0f;
             p.midFreq = 4;

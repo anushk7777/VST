@@ -8,12 +8,17 @@ namespace
     constexpr int margin = 32;
     constexpr int displayTop = 112, displayHeight = 196;
 
-    // Cards: Preamp | Silk comp on top, De-harsh | Air | Output below.
+    // Cards: Tone | Preamp | Silk comp on top, De-harsh | Air | Output below.
     constexpr int rowATop = 320, rowAHeight = 168, rowAKnobY = 368;
     constexpr int rowBTop = 500, rowBHeight = 170, rowBKnobY = 548;
-    constexpr int leftX = 22, leftRight = 582;
+    constexpr int leftX = 22, toneRight = 262, preampX = 274, leftRight = 582;
     constexpr int compX = 594, airX = 594, airRight = 776, outputX = 788, rightEdge = 1018;
-    constexpr int eqColumnWidth = 100;
+    constexpr int eqColumnWidth = 70;
+    constexpr int selectorY = rowAKnobY + 92;   // frequency selectors, under the gains
+
+    // Settings the EQ curve on the display is drawn from.
+    const char* const eqParameterIds[] { id::toneOn, id::toneLowFreq, id::toneLowGain, id::toneHighFreq, id::toneHighGain,
+                                         id::preampOn, id::eqLowFreq, id::eqLowGain, id::eqMidFreq, id::eqMidGain, id::eqHighGain };
 
     void drawHairline (juce::Graphics& g, float x0, float x1, float y, juce::Colour colour)
     {
@@ -38,6 +43,11 @@ namespace
     }
 
     juce::Font titleFont() { return linen::fonts::serifMedium (24.0f, 0.01f); }
+
+    juce::String powerTip (const juce::String& section)
+    {
+        return section + " on/off. Off is an exact bypass: your settings stay, but nothing they do is heard.";
+    }
 }
 
 //==============================================================================
@@ -126,21 +136,35 @@ LinenAudioProcessorEditor::Canvas::Canvas (LinenAudioProcessor& p)
       display (p.getDeharshDisplay(), parameter (p, id::deharshFocusLow), parameter (p, id::deharshFocusHigh)),
       presetBox (p),
       listenButton (p.getListenSession(), [&p] { p.startListening(); }),
-      highPass (parameter (p, id::eqHighPass)),
       lowFreq (parameter (p, id::eqLowFreq)),
       midFreq (parameter (p, id::eqMidFreq)),
       compMeter (linen::LinenMeter::Style::bar, [&p] { return p.getCompReductionDb(); }, 12.0f),
       mode (parameter (p, id::deharshMode), { "Soft", "Hard" }),
-      preampLamp ([this] { return juce::jmin (1.0f, 1.3f * param (id::preampDrive) * presence() + 0.15f * presence()); }, linen::palette::cobalt),
-      compLamp ([&p] { return p.getCompReductionDb() / 6.0f; }, linen::palette::cobalt),
-      deharshLamp ([&p]
+      toneLamp ([this]
+                {
+                    if (! isOn (id::toneOn))
+                        return 0.0f;
+                    const float shaping = (std::abs (param (id::toneLowGain)) + std::abs (param (id::toneHighGain))) / 6.0f;
+                    return juce::jmin (1.0f, shaping * (0.3f + 0.7f * presence()));
+                }, linen::palette::cobalt),
+      preampLamp ([this]
+                  {
+                      return isOn (id::preampOn) ? juce::jmin (1.0f, 1.3f * param (id::preampDrive) * presence() + 0.15f * presence()) : 0.0f;
+                  }, linen::palette::cobalt),
+      compLamp ([this, &p] { return isOn (id::compOn) ? p.getCompReductionDb() / 6.0f : 0.0f; }, linen::palette::cobalt),
+      deharshLamp ([this, &p]
                    {
+                       if (! isOn (id::deharshOn))
+                           return 0.0f;
                        float deepest = 0.0f;
                        for (auto& c : p.getDeharshDisplay().cutDb)
                            deepest = juce::jmax (deepest, c.load (std::memory_order_relaxed));
                        return deepest / 6.0f;
                    }, linen::palette::cobalt),
-      airLamp ([this, &p] { return juce::jmax (param (id::airAmount) * presence() * 1.4f, p.getSibilance()); }, linen::palette::cobalt),
+      airLamp ([this, &p]
+               {
+                   return isOn (id::airOn) ? juce::jmax (param (id::airAmount) * presence() * 1.4f, p.getSibilance()) : 0.0f;
+               }, linen::palette::cobalt),
       outputLamp ([this] { return presence(); }, linen::palette::cobalt),
       brandLamp ([this] { return 0.3f + 0.5f * presence(); }, linen::palette::cobalt),
       painWatch (parameter (p, id::pain), [this] (float v)
@@ -152,11 +176,21 @@ LinenAudioProcessorEditor::Canvas::Canvas (LinenAudioProcessor& p)
 {
     using namespace linen::palette;
 
-    cards[0].title = "Preamp";    cards[0].descriptor = juce::String (juce::CharPointer_UTF8 ("WARMTH  \xc2\xb7  WEIGHT"));
-    cards[1].title = "Silk comp";
-    cards[2].title = "De-harsh";  cards[2].dims = false;
-    cards[3].title = "Air";       cards[3].descriptor = "BREATH";
-    cards[4].title = "Output";
+    auto& [toneCard, preampCard, compCard, deharshCard, airCard, outputCard] = cards;
+    toneCard.title = "Tone";          toneCard.powerId = id::toneOn;        toneCard.descriptor = "INTO THE PREAMP";
+    preampCard.title = "Preamp";      preampCard.powerId = id::preampOn;
+    preampCard.descriptor = juce::String (juce::CharPointer_UTF8 ("WARMTH  \xc2\xb7  WEIGHT"));
+    compCard.title = "Silk comp";     compCard.powerId = id::compOn;
+    deharshCard.title = "De-harsh";   deharshCard.powerId = id::deharshOn;  deharshCard.dims = false;
+    airCard.title = "Air";            airCard.powerId = id::airOn;          airCard.descriptor = "BREATH";
+    outputCard.title = "Output";
+
+    toneCard.members = { &toneLow, &toneHigh, &toneLowFreq, &toneHighFreq, &toneLamp };
+    preampCard.members = { &drive, &lowGain, &midGain, &highGain, &lowFreq, &midFreq, &preampLamp };
+    compCard.members = { &cotton, &threshold, &ratio, &compAttack, &compRelease, &compMix, &makeup, &compMeter, &compLamp };
+    deharshCard.members = { &mode, &glare, &body, &delta, &sidechain, &depth, &detail, &attack, &release, &maxCut, &deharshLamp };
+    airCard.members = { &air, &deEss, &airLamp };
+    outputCard.members = { &input, &mix, &output, &nullTest, &outputLamp };
 
     addAndMakeVisible (display);
     display.setContextSource ([this, &p]
@@ -191,13 +225,30 @@ LinenAudioProcessorEditor::Canvas::Canvas (LinenAudioProcessor& p)
         return linen::LinenKnob::Glow { amount * (0.3f + 0.7f * stress), crimson, amount * (0.35f + 0.65f * stress) };
     });
 
+    // Power switches.
+    attach (tonePower, id::toneOn, powerTip ("Tone"));
+    attach (preampPower, id::preampOn, powerTip ("Preamp"));
+    attach (compPower, id::compOn, powerTip ("Silk comp"));
+    attach (deharshPower, id::deharshOn, powerTip ("De-harsh"));
+    attach (airPower, id::airOn, powerTip ("Air"));
+
+    // Tone: shelves that shape the voice before it reaches the preamp.
+    attach (toneLow, id::toneLowGain, "Low shelf: take weight out of the lows (or add some) before the preamp. "
+                                      "Half the gain at its frequency, all of it a few octaves below");
+    attach (toneHigh, id::toneHighGain, "High shelf: calm or open the top before the preamp. "
+                                        "Half the gain at its frequency, all of it a few octaves above");
+    attach (toneLowFreq, id::toneLowFreq, "Low shelf frequency: drag up or down, or scroll. Shift for fine steps");
+    attach (toneHighFreq, id::toneHighFreq, "High shelf frequency: drag up or down, or scroll. Shift for fine steps");
+    toneLow.setBipolar (true);
+    toneHigh.setBipolar (true);
+
     // Preamp + EQ.
-    attach (drive, id::preampDrive, "Drive: push the preamp for transformer weight and class-A warmth");
+    attach (drive, id::preampDrive, "Drive: from a whisper of class-A warmth to thick transformer weight. "
+                                    "0 = off (exact bypass); about 30% is the house sound");
     attach (lowGain, id::eqLowGain, "Low shelf gain");
     attach (midGain, id::eqMidGain, "Mid gain: a broad, musical bell that narrows as you push it");
     attach (highGain, id::eqHighGain, "High shelf at 12 kHz: air and sheen");
-    for (auto [stepper, tip] : { std::pair { &highPass, "High-pass filter (18 dB/oct)" },
-                                 std::pair { &lowFreq, "Low shelf frequency" },
+    for (auto [stepper, tip] : { std::pair { &lowFreq, "Low shelf frequency" },
                                  std::pair { &midFreq, "Mid frequency" } })
     {
         stepper->setTooltip (tip);
@@ -205,10 +256,10 @@ LinenAudioProcessorEditor::Canvas::Canvas (LinenAudioProcessor& p)
     }
 
     // Silk compressor.
-    attach (cotton, id::compCotton, "Cotton: the signature texture. While it compresses it adds soft diode-bridge harmonics, "
-                                    "low-mid warmth and a softer top, so loud lines turn round and warm while quiet ones stay open");
+    attach (cotton, id::compCotton, "Cotton: the signature texture, while the compressor holds the voice (raise Ratio above 1:1). "
+                                    "Low-mid warmth, a softer top and a whisper of harmonics: loud lines turn round, quiet ones stay open");
     attach (threshold, id::compThreshold, "Threshold: where the compressor starts to hold the voice");
-    attach (ratio, id::compRatio, "Ratio: 1.5-2.5 is invisible, 4+ is firm");
+    attach (ratio, id::compRatio, "Ratio: 1:1 = off. 1.5-2.5 is invisible, 4+ is firm");
     attach (compAttack, id::compAttack, "Attack: slower lets consonants through for a natural edge");
     attach (compRelease, id::compRelease, "Release: the fast half. The other half lets go slowly, slower still after long held phrases, like an optical cell");
     attach (compMix, id::compMix, "Blend: parallel compression, mixed with the uncompressed voice");
@@ -223,7 +274,7 @@ LinenAudioProcessorEditor::Canvas::Canvas (LinenAudioProcessor& p)
     attach (body, id::deharshBody, "Body protect: never cut the sung fundamental, so the voice keeps its weight");
     attach (delta, id::deharshDelta, "Delta: hear only what De-harsh is removing");
     attach (sidechain, id::deharshSidechain, "Key: listen to the sidechain input instead of the vocal");
-    attach (depth, id::deharshDepth, "Depth: how much of each harsh resonance is removed");
+    attach (depth, id::deharshDepth, "Depth: how much of each harsh resonance is removed. 0 = off (exact pass-through)");
     attach (detail, id::deharshDetail, "Detail: low = broad, gentle cuts; high = narrow, picky cuts");
     attach (attack, id::deharshAttack, "Attack: how fast cuts close in");
     attach (release, id::deharshRelease, "Release: how slowly cuts let go");
@@ -235,18 +286,62 @@ LinenAudioProcessorEditor::Canvas::Canvas (LinenAudioProcessor& p)
     attach (input, id::inputGain, "Input gain");
     attach (mix, id::mix, "Mix: blend the processed vocal with the untouched one (latency-matched)");
     attach (output, id::outputGain, "Output gain");
+    attach (nullTest, id::nullTest, "Null (phase test): plays Linen's output minus your untouched vocal, sample-aligned. "
+                                    "Silence means Linen is changing nothing; on any setting you hear exactly what it adds or takes away");
 
     for (auto* k : { &lowGain, &midGain, &highGain, &input, &output })
         k->setBipolar (true);
 
     // Lamps.
+    toneLamp.setTooltip ("Lights as the Tone shelves shape the voice");
     preampLamp.setTooltip ("Lights as the preamp works");
     compLamp.setTooltip ("Lights with gain reduction");
     deharshLamp.setTooltip ("Lights as De-harsh cuts");
     airLamp.setTooltip ("Lights with air, flares on S and T sounds");
     outputLamp.setTooltip ("Signal");
-    for (auto* lamp : { &preampLamp, &compLamp, &deharshLamp, &airLamp, &outputLamp, &brandLamp })
+    for (auto* lamp : { &toneLamp, &preampLamp, &compLamp, &deharshLamp, &airLamp, &outputLamp, &brandLamp })
         addAndMakeVisible (*lamp);
+
+    // The display draws the EQ shape; it is redrawn whenever an EQ setting moves.
+    display.setEqResponse ([this] (float hz)
+    {
+        double db = 0.0;
+        if (isOn (id::toneOn))
+        {
+            linen::ToneParams t;
+            t.lowHz = param (id::toneLowFreq);
+            t.lowGainDb = param (id::toneLowGain);
+            t.highHz = param (id::toneHighFreq);
+            t.highGainDb = param (id::toneHighGain);
+            db += linen::ToneShelves::magnitudeDb (t, 48000.0, hz);
+        }
+        if (isOn (id::preampOn))
+        {
+            linen::EqParams e;
+            e.lowFreq = juce::roundToInt (param (id::eqLowFreq));
+            e.lowGainDb = param (id::eqLowGain);
+            e.midFreq = juce::roundToInt (param (id::eqMidFreq));
+            e.midGainDb = param (id::eqMidGain);
+            e.highGainDb = param (id::eqHighGain);
+            db += linen::Eq1073::magnitudeDb (e, 48000.0, hz);
+        }
+        return (float) db;
+    });
+    for (auto* eqId : eqParameterIds)
+        processor.state.addParameterListener (eqId, this);
+
+    updateDimming (0.0, true);
+}
+
+LinenAudioProcessorEditor::Canvas::~Canvas()
+{
+    for (auto* eqId : eqParameterIds)
+        processor.state.removeParameterListener (eqId, this);
+}
+
+void LinenAudioProcessorEditor::Canvas::parameterChanged (const juce::String&, float)
+{
+    display.markEqChanged();   // may arrive on the audio thread: it only flags a redraw
 }
 
 float LinenAudioProcessorEditor::Canvas::param (const char* paramId) const
@@ -260,36 +355,48 @@ float LinenAudioProcessorEditor::Canvas::presence() const
     return juce::jlimit (0.0f, 1.0f, (db + 60.0f) / 40.0f);
 }
 
-void LinenAudioProcessorEditor::Canvas::attach (linen::LinenKnob& knob, const char* paramId, const juce::String& tooltip)
+void LinenAudioProcessorEditor::Canvas::attach (juce::Slider& slider, const char* paramId, const juce::String& tooltip)
 {
     auto& p = parameter (processor, paramId);
-    sliderAttachments.push_back (std::make_unique<SliderAttachment> (processor.state, paramId, knob));
-    knob.setDoubleClickReturnValue (true, p.convertFrom0to1 (p.getDefaultValue()));
-    knob.setTooltip (tooltip);
-    addAndMakeVisible (knob);
+    sliderAttachments.push_back (std::make_unique<SliderAttachment> (processor.state, paramId, slider));
+    slider.setDoubleClickReturnValue (true, p.convertFrom0to1 (p.getDefaultValue()));
+    slider.setTooltip (tooltip);
+    addAndMakeVisible (slider);
 }
 
-void LinenAudioProcessorEditor::Canvas::attach (linen::LinenPill& pill, const char* paramId, const juce::String& tooltip)
+void LinenAudioProcessorEditor::Canvas::attach (juce::Button& button, const char* paramId, const juce::String& tooltip)
 {
-    buttonAttachments.push_back (std::make_unique<ButtonAttachment> (processor.state, paramId, pill));
-    pill.setTooltip (tooltip);
-    addAndMakeVisible (pill);
+    buttonAttachments.push_back (std::make_unique<ButtonAttachment> (processor.state, paramId, button));
+    button.setTooltip (tooltip);
+    addAndMakeVisible (button);
+}
+
+int LinenAudioProcessorEditor::Canvas::titleX (const Card& card)
+{
+    return card.bounds.getX() + (card.powerId != nullptr ? 40 : 16);
 }
 
 void LinenAudioProcessorEditor::Canvas::resized()
 {
-    cards[0].bounds = juce::Rectangle<int>::leftTopRightBottom (leftX, rowATop, leftRight, rowATop + rowAHeight);
-    cards[1].bounds = juce::Rectangle<int>::leftTopRightBottom (compX, rowATop, rightEdge, rowATop + rowAHeight);
-    cards[2].bounds = juce::Rectangle<int>::leftTopRightBottom (leftX, rowBTop, leftRight, rowBTop + rowBHeight);
-    cards[3].bounds = juce::Rectangle<int>::leftTopRightBottom (airX, rowBTop, airRight, rowBTop + rowBHeight);
-    cards[4].bounds = juce::Rectangle<int>::leftTopRightBottom (outputX, rowBTop, rightEdge, rowBTop + rowBHeight);
+    using Rect = juce::Rectangle<int>;
+    cards[0].bounds = Rect::leftTopRightBottom (leftX, rowATop, toneRight, rowATop + rowAHeight);
+    cards[1].bounds = Rect::leftTopRightBottom (preampX, rowATop, leftRight, rowATop + rowAHeight);
+    cards[2].bounds = Rect::leftTopRightBottom (compX, rowATop, rightEdge, rowATop + rowAHeight);
+    cards[3].bounds = Rect::leftTopRightBottom (leftX, rowBTop, leftRight, rowBTop + rowBHeight);
+    cards[4].bounds = Rect::leftTopRightBottom (airX, rowBTop, airRight, rowBTop + rowBHeight);
+    cards[5].bounds = Rect::leftTopRightBottom (outputX, rowBTop, rightEdge, rowBTop + rowBHeight);
 
-    // Each section's lamp sits just after its title.
-    linen::LinenLamp* lamps[] { &preampLamp, &compLamp, &deharshLamp, &airLamp, &outputLamp };
+    // Each section's power switch sits before its title, its lamp just after.
+    linen::LinenLamp* lamps[] { &toneLamp, &preampLamp, &compLamp, &deharshLamp, &airLamp, &outputLamp };
+    linen::LinenPower* powers[] { &tonePower, &preampPower, &compPower, &deharshPower, &airPower, nullptr };
     for (size_t i = 0; i < cards.size(); ++i)
     {
+        const auto& b = cards[i].bounds;
+        if (powers[i] != nullptr)
+            powers[i]->setBounds (b.getX() + 13, b.getY() + 14, 20, 20);
+
         const int titleWidth = (int) std::ceil (juce::GlyphArrangement::getStringWidth (titleFont(), cards[i].title));
-        lamps[i]->setBounds (cards[i].bounds.getX() + 16 + titleWidth + 6, cards[i].bounds.getY() + 13, 22, 22);
+        lamps[i]->setBounds (titleX (cards[i]) + titleWidth + 6, b.getY() + 13, 22, 22);
     }
 
     display.setBounds (margin, displayTop, getWidth() - margin * 2, displayHeight);
@@ -301,17 +408,21 @@ void LinenAudioProcessorEditor::Canvas::resized()
     place (silk, rightEdge - 96, 6, 90);
     brandLamp.setBounds (margin + 196, 49, 22, 22);
 
-    // Preamp: Drive, then EQ columns (selector under each gain).
-    place (drive, leftX + 12, rowAKnobY, 100);
-    const int eqX = leftX + 118;
-    const int stepperY = rowAKnobY + 52 + 40;
-    const int inset = 12;
-    highPass.setBounds (eqX + inset, rowAKnobY + 34, eqColumnWidth - inset * 2, 20);
-    place (lowGain, eqX + eqColumnWidth, rowAKnobY, eqColumnWidth);
-    lowFreq.setBounds (eqX + eqColumnWidth + inset, stepperY, eqColumnWidth - inset * 2, 20);
-    place (midGain, eqX + eqColumnWidth * 2, rowAKnobY, eqColumnWidth);
-    midFreq.setBounds (eqX + eqColumnWidth * 2 + inset, stepperY, eqColumnWidth - inset * 2, 20);
-    place (highGain, eqX + eqColumnWidth * 3, rowAKnobY, eqColumnWidth);
+    // Tone: each shelf's gain, with its frequency underneath.
+    place (toneLow, leftX + 10, rowAKnobY, 110);
+    toneLowFreq.setBounds (leftX + 10 + 15, selectorY, 80, 20);
+    place (toneHigh, leftX + 120, rowAKnobY, 110);
+    toneHighFreq.setBounds (leftX + 120 + 15, selectorY, 80, 20);
+
+    // Preamp: Drive, then the console EQ columns (selector under each gain).
+    place (drive, preampX + 6, rowAKnobY, 84);
+    const int eqX = preampX + 90;
+    const int inset = 3;
+    place (lowGain, eqX, rowAKnobY, eqColumnWidth);
+    lowFreq.setBounds (eqX + inset, selectorY, eqColumnWidth - inset * 2, 20);
+    place (midGain, eqX + eqColumnWidth, rowAKnobY, eqColumnWidth);
+    midFreq.setBounds (eqX + eqColumnWidth + inset, selectorY, eqColumnWidth - inset * 2, 20);
+    place (highGain, eqX + eqColumnWidth * 2, rowAKnobY, eqColumnWidth);
 
     // Silk comp: Cotton leads, then the finer controls and the GR meter.
     makeup.setBounds (rightEdge - 16 - makeup.getIdealWidth(), rowATop + 12, makeup.getIdealWidth(), 22);
@@ -343,9 +454,10 @@ void LinenAudioProcessorEditor::Canvas::resized()
         x += 100;
     }
 
-    // Air and Output.
+    // Air, and Output with the phase test at its top right.
     place (air, airX + 6, rowBKnobY + 4, 84);
     place (deEss, airX + 92, rowBKnobY + 4, 84);
+    nullTest.setBounds (rightEdge - 16 - nullTest.getIdealWidth(), pillY, nullTest.getIdealWidth(), pillH);
     x = outputX + 6;
     for (auto* knob : { &input, &mix, &output })
     {
@@ -354,34 +466,33 @@ void LinenAudioProcessorEditor::Canvas::resized()
     }
 }
 
-std::vector<juce::Component*> LinenAudioProcessorEditor::Canvas::dimmable()
-{
-    return { &drive, &lowGain, &midGain, &highGain, &highPass, &lowFreq, &midFreq,
-             &cotton, &threshold, &ratio, &compAttack, &compRelease, &compMix, &makeup, &compMeter,
-             &air, &deEss, &input, &mix, &output, &preampLamp, &compLamp, &airLamp, &outputLamp };
-}
-
-void LinenAudioProcessorEditor::Canvas::updateDimming (double timestampSeconds)
+void LinenAudioProcessorEditor::Canvas::updateDimming (double timestampSeconds, bool instantly)
 {
     const float dt = lastTick > 0.0 ? (float) juce::jlimit (0.0, 0.1, timestampSeconds - lastTick) : 0.0f;
     lastTick = timestampSeconds;
     clock = timestampSeconds;
 
-    const float target = delta.getToggleState() ? 0.35f : 1.0f;
-    if (std::abs (target - dim) < 0.002f)
-        return;
-
-    // ~180 ms ease-out.
-    dim += (target - dim) * (1.0f - std::exp (-dt / 0.06f));
-    if (std::abs (target - dim) < 0.002f)
-        dim = target;
-
-    for (auto* c : dimmable())
-        c->setAlpha (dim);
+    // Delta dims every card but De-harsh's; a section switched off fades back.
+    const bool deharshIn = isOn (id::deharshOn);
+    const bool listeningToDelta = delta.getToggleState() && deharshIn;
+    delta.setEnabled (deharshIn);
 
     for (auto& card : cards)
-        if (card.dims)
-            repaint (card.bounds.expanded (20));
+    {
+        const float target = (card.dims && listeningToDelta ? 0.35f : 1.0f)
+                           * (card.powerId == nullptr || isOn (card.powerId) ? 1.0f : 0.4f);
+        if (! instantly && std::abs (target - card.alpha) < 0.002f)
+            continue;
+
+        // ~180 ms ease-out.
+        card.alpha += (target - card.alpha) * (instantly ? 1.0f : 1.0f - std::exp (-dt / 0.06f));
+        if (std::abs (target - card.alpha) < 0.002f)
+            card.alpha = target;
+
+        for (auto* c : card.members)
+            c->setAlpha (card.alpha);
+        repaint (card.bounds.expanded (20));
+    }
 }
 
 void LinenAudioProcessorEditor::Canvas::paintCard (juce::Graphics& g, Card& card)
@@ -389,7 +500,7 @@ void LinenAudioProcessorEditor::Canvas::paintCard (juce::Graphics& g, Card& card
     using namespace linen::palette;
 
     const auto r = card.bounds.toFloat();
-    const float alpha = card.dims ? dim : 1.0f;
+    const float alpha = card.alpha;
     juce::Path shape;
     shape.addRoundedRectangle (r, 18.0f);
 
@@ -406,7 +517,7 @@ void LinenAudioProcessorEditor::Canvas::paintCard (juce::Graphics& g, Card& card
 
     g.setColour (espresso.withMultipliedAlpha (alpha));
     g.setFont (titleFont());
-    g.drawText (card.title, juce::Rectangle<float> (r.getX() + 16.0f, r.getY() + 8.0f, 220.0f, 28.0f), juce::Justification::centredLeft);
+    g.drawText (card.title, juce::Rectangle<float> ((float) titleX (card), r.getY() + 8.0f, 220.0f, 28.0f), juce::Justification::centredLeft);
 
     if (card.descriptor.isNotEmpty())
     {
@@ -427,13 +538,6 @@ void LinenAudioProcessorEditor::Canvas::paint (juce::Graphics& g)
 
     for (auto& card : cards)
         paintCard (g, card);
-
-    // The high-pass column has no gain knob; caption it where the others' captions sit.
-    {
-        g.setColour (ink (0.62f * dim));
-        g.setFont (linen::fonts::sansMedium (11.0f, 0.16f));
-        g.drawText ("HIGH-PASS", juce::Rectangle<int> (leftX + 118, rowAKnobY + 64, eqColumnWidth, 16), juce::Justification::centred);
-    }
 
     drawHairline (g, (float) margin, (float) (getWidth() - margin), (float) getHeight() - 38.0f, champagne.withAlpha (0.45f));
 

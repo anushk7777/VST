@@ -41,32 +41,33 @@ void Eq1073::reset()
 
 void Eq1073::setParams (const EqParams& p)
 {
-    needsDesign = needsDesign || p.highPass != params.highPass || p.lowFreq != params.lowFreq || p.midFreq != params.midFreq;
+    needsDesign = needsDesign || p.lowFreq != params.lowFreq || p.midFreq != params.midFreq;
     params = p;
     lowGain.setTargetValue (p.lowGainDb);
     midGain.setTargetValue (p.midGainDb);
     highGain.setTargetValue (p.highGainDb);
 }
 
-void Eq1073::design()
+Eq1073::Design Eq1073::designFor (const EqParams& p, double rate, float lowDb, float midDb, float highDb)
 {
-    // High-pass: 3rd-order Butterworth (1st-order + 2nd-order, Q = 1) = 18 dB/oct.
     // Every stage always runs (an "off" stage is an identity filter), so
     // switching bands in and out never restarts a filter from cold.
-    const float hpHz = pick (EqParams::highPassHz, params.highPass);
-    coeffs[hp1] = hpHz > 0.0f ? Biquad::Coeffs::highPassFirstOrder (sampleRate, hpHz) : Biquad::Coeffs::identity();
-    coeffs[hp2] = hpHz > 0.0f ? Biquad::Coeffs::highPass (sampleRate, hpHz, 1.0) : Biquad::Coeffs::identity();
+    Design d;
 
     // Low shelf with a slight resonant bump (Q 0.9), as the inductor shelf has.
-    const float lowHz = pick (EqParams::lowShelfHz, params.lowFreq);
-    coeffs[lowShelf] = lowHz > 0.0f ? Biquad::Coeffs::lowShelf (sampleRate, lowHz, 0.9, lowGain.getCurrentValue())
-                                    : Biquad::Coeffs::identity();
+    const float lowHz = pick (EqParams::lowShelfHz, p.lowFreq);
+    d[lowShelf] = lowHz > 0.0f ? Biquad::Coeffs::lowShelf (rate, lowHz, 0.9, lowDb) : Biquad::Coeffs::identity();
 
-    const float midHz = pick (EqParams::midHz, params.midFreq);
-    const float midDb = midGain.getCurrentValue();
-    coeffs[mid] = midHz > 0.0f ? Biquad::Coeffs::peak (sampleRate, midHz, midQ (midDb), midDb) : Biquad::Coeffs::identity();
+    const float midHz = pick (EqParams::midHz, p.midFreq);
+    d[mid] = midHz > 0.0f ? Biquad::Coeffs::peak (rate, midHz, midQ (midDb), midDb) : Biquad::Coeffs::identity();
 
-    coeffs[highShelf] = Biquad::Coeffs::highShelf (sampleRate, EqParams::highShelfHz, 0.6, highGain.getCurrentValue());
+    d[highShelf] = Biquad::Coeffs::highShelf (rate, EqParams::highShelfHz, 0.6, highDb);
+    return d;
+}
+
+void Eq1073::design()
+{
+    coeffs = designFor (params, sampleRate, lowGain.getCurrentValue(), midGain.getCurrentValue(), highGain.getCurrentValue());
 
     for (auto& stages : filters)
         for (int s = 0; s < numStages; ++s)
@@ -112,6 +113,14 @@ double Eq1073::magnitudeDb (double hz) const
     double total = 0.0;
     for (const auto& c : coeffs)
         total += c.magnitudeDb (sampleRate, hz);
+    return total;
+}
+
+double Eq1073::magnitudeDb (const EqParams& p, double rate, double hz)
+{
+    double total = 0.0;
+    for (const auto& c : designFor (p, rate, p.lowGainDb, p.midGainDb, p.highGainDb))
+        total += c.magnitudeDb (rate, hz);
     return total;
 }
 

@@ -9,7 +9,7 @@ namespace linen
 
 struct DeharshParams
 {
-    float depth = 5.0f;          // 0..15; 10 removes the whole excess above threshold
+    float depth = 0.0f;          // 0..15; 10 removes the whole excess above threshold; 0 = off
     float detail = 0.5f;         // 0..1; higher = narrower, pickier cuts
     float attackMs = 5.0f;
     float releaseMs = 120.0f;
@@ -57,6 +57,10 @@ struct DeharshDisplay
          weighting and body protection, then smoothed in time (attack/release)
          and across frequency (so cuts are smooth bells, not ringing notches).
       5. Applied to every channel's spectrum with the same gains (stereo-linked).
+
+    At Depth 0, once every cut has let go, the input is passed straight
+    through (delayed by the latency) rather than through the FFT round trip,
+    so "off" is bit-exact. The analysis keeps running for the display.
 
     Latency is one FFT length. */
 class ResonanceSuppressor
@@ -109,6 +113,7 @@ private:
     int fifoPos = 0, hopCounter = 0;
     juce::uint32 frameCounter = 0;
     bool detectorIsMainMix = true;
+    bool passThrough = true;   // Depth 0 and no cut left: output the delayed input exactly
 
     // Per-frame scratch, all sized in prepare().
     std::vector<std::complex<float>> timeData, freqData, detSpectrum;

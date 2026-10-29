@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.22)
 
-project(Linen VERSION 0.1.0 LANGUAGES C CXX)
+project(Linen VERSION 0.2.0 LANGUAGES C CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -47,7 +47,8 @@ set(LINEN_DSP_SOURCES
     src/dsp/PitchTracker.cpp
     src/dsp/ResonanceSuppressor.cpp
     src/dsp/SilkCompressor.cpp
-    src/dsp/SilkMacro.cpp)
+    src/dsp/SilkMacro.cpp
+    src/dsp/ToneShelves.cpp)
 
 juce_add_binary_data(LinenAssets
     NAMESPACE LinenBinary
@@ -121,7 +122,9 @@ target_sources(LinenTests PRIVATE
     tests/CompAirTests.cpp
     tests/SilkTests.cpp
     tests/PainTests.cpp
-    tests/AssistTests.cpp)
+    tests/AssistTests.cpp
+    tests/ToneTests.cpp
+    tests/CleanTests.cpp)
 target_include_directories(LinenTests PRIVATE src tests)
 target_compile_definitions(LinenTests PRIVATE ${LINEN_COMMON_DEFINITIONS})
 target_link_libraries(LinenTests
@@ -142,6 +145,19 @@ target_compile_definitions(LinenRender PRIVATE ${LINEN_COMMON_DEFINITIONS})
 target_link_libraries(LinenRender
     PRIVATE
         juce::juce_dsp
+        juce::juce_audio_formats
+    PUBLIC
+        juce::juce_recommended_config_flags
+        juce::juce_recommended_warning_flags)
+
+# ---- Plugin check: hosts the built VST3 like a DAW (null test, distortion by preset)
+juce_add_console_app(LinenCheck PRODUCT_NAME "LinenCheck")
+target_sources(LinenCheck PRIVATE tools/check.cpp)
+target_compile_definitions(LinenCheck PRIVATE ${LINEN_COMMON_DEFINITIONS} JUCE_PLUGINHOST_VST3=1)
+target_link_libraries(LinenCheck
+    PRIVATE
+        LinenAssets
+        juce::juce_audio_processors
         juce::juce_audio_formats
     PUBLIC
         juce::juce_recommended_config_flags

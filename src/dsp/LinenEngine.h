@@ -7,7 +7,9 @@
 #include "PainEngine.h"
 #include "Preamp.h"
 #include "ResonanceSuppressor.h"
+#include "SectionBypass.h"
 #include "SilkCompressor.h"
+#include "ToneShelves.h"
 
 namespace linen
 {
@@ -20,6 +22,8 @@ struct EngineParams
     float outputGainDb = 0.0f;
     float mix          = 1.0f;  // 0 = dry only, 1 = processed only
 
+    ToneParams tone;                // shelves before the preamp
+
     float preampDrive = 0.0f;       // 0..1; 0 = preamp bypassed
     EqParams eq;
 
@@ -31,14 +35,28 @@ struct EngineParams
 
     float silk = 0.5f;  // the Silk macro; 0.5 = settings as they are
     float pain = 0.0f;  // the Pain macro, 0..1; 0 = off
+
+    /** Section power switches. An "off" section is an exact, latency-aligned
+        bypass, whatever its knobs say. */
+    struct Sections
+    {
+        bool tone = true, preamp = true, deharsh = true, comp = true, air = true;
+    } sections;
+
+    /** Phase test: play Linen's output minus the untouched input. Silence
+        means the chain changes nothing. */
+    bool nullTest = false;
 };
 
 /** The whole Linen signal chain, independent of the plugin wrapper.
 
-    Input gain → Preamp → EQ → Pain → De-harsh → Silk comp → Air → Output gain → Mix
+    Input gain → Tone → Preamp → EQ → Pain → De-harsh → Silk comp → Air → Output gain → Mix
 
     The dry signal for Mix is taken before the input gain and delayed by the
-    chain's latency, so dry and wet stay sample-aligned at any Mix setting. */
+    chain's latency, so dry and wet stay sample-aligned at any Mix setting.
+    Every section has a power switch (a click-free, latency-aligned bypass),
+    and every neutral setting is bit-exact: with all of them neutral the
+    output is the input, delayed by the latency, to the last bit. */
 class Engine
 {
 public:
@@ -78,8 +96,9 @@ private:
     EngineParams params;
 
     juce::SmoothedValue<float, juce::ValueSmoothingTypes::Multiplicative> inputGain { 1.0f }, outputGain { 1.0f };
-    juce::SmoothedValue<float> mix { 1.0f };
+    juce::SmoothedValue<float> mix { 1.0f }, nullAmount { 0.0f };
 
+    ToneShelves tone;
     Preamp preamp;
     Eq1073 eq;
     PainEngine painEngine;
@@ -87,6 +106,8 @@ private:
     std::vector<float> detector;
     SilkCompressor comp;
     Air air;
+
+    SectionBypass toneSwitch, preampSwitch, deharshSwitch, compSwitch, airSwitch;
 
     juce::dsp::DelayLine<float, juce::dsp::DelayLineInterpolationTypes::None> dryDelay;
     juce::AudioBuffer<float> dryBuffer;

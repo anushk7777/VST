@@ -6,11 +6,24 @@ namespace linen
 namespace
 {
     constexpr int oversamplingOrder = 2;          // 2^2 = 4x
-    constexpr float maxDriveDb = 18.0f;
-    constexpr float classAHeadroom = 0.35f;     // class-A stage sees drive × this
     constexpr float bypassBelow = 0.04f;          // Drive under this fades to the untouched signal
 
-    float driveGainFor (float drive01) { return juce::Decibels::decibelsToGain (drive01 * maxDriveDb); }
+    // Drive law: how hard each stage is hit, rising evenly in dB across the
+    // knob up to its value at 100%. Tuned on sines at vocal levels
+    // (tests/PreampEqTests.cpp holds the budgets):
+    //   class-A, 1 kHz at -6 dBFS peak: about -55 dB THD at 30%, -30 dB at 100%;
+    //   irons, 100 Hz at -6 dBFS peak: under -50 dB at 30%, thick at 100%.
+    constexpr float classAAtFull = 0.36f, classARangeDb = 36.0f;
+    constexpr float ironAtFull = 0.41f, ironRangeDb = 13.0f;
+    constexpr float outputIronShare = 0.5f;     // the output iron is driven half as hard
+
+    // Class-A bias: leans from quiet to bloom as the voice nears a belt.
+    constexpr float biasQuiet = 0.10f, biasBloom = 0.15f, beltPeak = 0.5f;
+
+    float lawGain (float drive01, float atFull, float rangeDb)
+    {
+        return atFull * juce::Decibels::decibelsToGain (-(1.0f - drive01) * rangeDb);
+    }
 
     /** Smooth soft-saturation curve, x / sqrt(1 + x²): tanh-like, but several
         times cheaper and smooth everywhere (no piecewise joins, which the
@@ -26,11 +39,11 @@ namespace
     }
 }
 
-float Preamp::Transformer::process (float x, float driveGain) noexcept
+float Preamp::Transformer::process (float x, float fluxGain) noexcept
 {
     // Leaky integrator → saturate the flux → matching differentiator.
     // Doubles keep the differentiator from amplifying rounding noise.
-    const double gain = (double) fluxGain * driveGain;
+    const double gain = fluxGain;
     const double f = (double) flux * (1.0 - leak) + (double) k * x;
     const double saturated = soft (f * gain) / gain;
     const double y = (saturated - (double) lastSaturated * (1.0 - leak)) / k;
@@ -62,8 +75,6 @@ void Preamp::prepare (double newSampleRate, int maxBlockSize, int newNumChannels
             iron->k = (float) (juce::MathConstants<double>::twoPi * 90.0 / overSampleRate);
             iron->leak = (float) (juce::MathConstants<double>::twoPi * 6.0 / overSampleRate);
         }
-        c.inputIron.fluxGain = 0.35f;
-        c.outputIron.fluxGain = 0.18f;
 
         // Output iron: a slight resonance above the audio band (the top "sheen"
         // these transformers are known for), then a gentle roll-off.
@@ -76,7 +87,8 @@ void Preamp::prepare (double newSampleRate, int maxBlockSize, int newNumChannels
 
     drive.reset (sampleRate, 0.03);
     driveRamp.assign ((size_t) maxBlockSize, 0.0f);
-    gainRamp.assign ((size_t) maxBlockSize, 1.0f);
+    classARamp.assign ((size_t) maxBlockSize, 0.0f);
+    ironRamp.assign ((size_t) maxBlockSize, 0.0f);
 
     const juce::dsp::ProcessSpec spec { sampleRate, (juce::uint32) maxBlockSize, (juce::uint32) juce::jmax (1, numChannels) };
     dryDelay.prepare (spec);
@@ -114,8 +126,10 @@ void Preamp::process (juce::AudioBuffer<float>& buffer)
 
     for (int i = 0; i < n; ++i)
     {
-        driveRamp[(size_t) i] = drive.getNextValue();
-        gainRamp[(size_t) i] = driveGainFor (driveRamp[(size_t) i]);
+        const float d = drive.getNextValue();
+        driveRamp[(size_t) i] = d;
+        classARamp[(size_t) i] = lawGain (d, classAAtFull, classARangeDb);
+        ironRamp[(size_t) i] = lawGain (d, ironAtFull, ironRangeDb);
     }
 
     // Latency-matched copy of the input, for the Drive-0 bypass blend.
@@ -140,12 +154,14 @@ void Preamp::process (juce::AudioBuffer<float>& buffer)
         auto& c = channels[(size_t) ch];
         auto* x = up.getChannelPointer ((size_t) ch);
 
-        float bias = 0.1f, biasOffset = 0.0f, biasNorm = 1.0f, ga = 1.0f;
+        float bias = biasQuiet, biasOffset = 0.0f, biasNorm = 1.0f, ga = 1.0f, iron = 1.0f;
 
         for (int i = 0; i < (int) up.getNumSamples(); ++i)
         {
-            const float g = gainRamp[(size_t) (i / factor)];
-            float s = c.inputIron.process (x[i], g);
+            if (i % factor == 0)
+                iron = ironRamp[(size_t) (i / factor)];
+
+            float s = c.inputIron.process (x[i], iron);
 
             // Class-A stage: bias leans further as the voice gets louder. The
             // bias only moves at envelope speed, so refresh it once per input sample.
@@ -154,8 +170,8 @@ void Preamp::process (juce::AudioBuffer<float>& buffer)
 
             if (i % factor == 0)
             {
-                ga = classAHeadroom * g;
-                bias = 0.10f + 0.30f * juce::jmin (1.0f, c.envelope * ga);
+                ga = classARamp[(size_t) (i / factor)];
+                bias = biasQuiet + biasBloom * juce::jmin (1.0f, c.envelope / beltPeak);
                 biasOffset = soft (bias);
                 biasNorm = 1.0f / (ga * softSlope (bias));
             }
@@ -163,7 +179,7 @@ void Preamp::process (juce::AudioBuffer<float>& buffer)
             s = (soft (ga * s + bias) - biasOffset) * biasNorm;
 
             s = c.outputLowPass.process (s);
-            x[i] = c.outputIron.process (s, g);
+            x[i] = c.outputIron.process (s, iron * outputIronShare);
         }
     }
 

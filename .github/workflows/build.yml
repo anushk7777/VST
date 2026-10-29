@@ -21,6 +21,19 @@ jobs:
       - name: Unit tests
         run: build/LinenTests_artefacts/Release/LinenTests.exe
 
+      # Loads this exact Linen.vst3 like a DAW: Clean must null bit for bit,
+      # and no preset (Pain aside) may distort beyond -45 dB.
+      - name: Null test and distortion check (the built VST3)
+        run: build/LinenCheck_artefacts/Release/LinenCheck.exe build/Linen_artefacts/Release/VST3/Linen.vst3 --plot linen-null-test.png
+
+      - name: Upload null test picture
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: Linen-null-test
+          path: linen-null-test.png
+          if-no-files-found: ignore
+
       - name: Upload VST3
         uses: actions/upload-artifact@v4
         with:
@@ -69,8 +82,11 @@ jobs:
       - name: Configure
         run: cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
 
-      - name: Build tests and render tool
-        run: cmake --build build --target LinenTests LinenRender
+      - name: Build tests, tools and the VST3
+        run: cmake --build build --target LinenTests LinenRender LinenCheck Linen_VST3
 
       - name: Unit tests
         run: ./build/LinenTests_artefacts/Release/LinenTests
+
+      - name: Null test and distortion check (the built VST3)
+        run: ./build/LinenCheck_artefacts/Release/LinenCheck build/Linen_artefacts/Release/VST3/Linen.vst3

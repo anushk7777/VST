@@ -6,6 +6,12 @@ namespace linen
 
 namespace
 {
+    // Level trim, measured on a sung phrase (tests/SilkTests.cpp): a vocal's
+    // loud phrases reach the compressor's detector at about -14 dB, and auto
+    // gain gives back most, not all, of what extra compression takes.
+    constexpr float vocalDetectorDb = -14.0f;
+    constexpr float trimPerHeldDb = 0.86f;
+
     /** Smooth 0..1 ramp between edge0 and edge1. */
     float smoothstep (float edge0, float edge1, float x)
     {
@@ -21,32 +27,54 @@ namespace
         const float shaped = smoothstep (from, to, std::abs (m));
         return m < 0.0f ? -shaped : shaped;
     }
+
+    /** How far below its input level a sung vocal leaves the compressor, after auto gain. */
+    float heldDownDb (const CompParams& c)
+    {
+        return -(SilkCompressor::staticGainDb (vocalDetectorDb, c.thresholdDb, c.ratio) + SilkCompressor::makeupDb (c));
+    }
 }
 
 EngineParams SilkMacro::apply (const EngineParams& user, float silk)
 {
-    EngineParams p = user;
     silk = juce::jlimit (0.0f, 1.0f, silk);
+    if (std::abs (silk - 0.5f) <= neutralZone)
+        return user;
+
+    EngineParams p = user;
+    const auto& on = user.sections;
 
     // Drive comes in early, De-harsh across the whole travel, compression in
     // the middle, Air last: the order an engineer would reach for them.
-    p.preampDrive = juce::jlimit (0.0f, 1.0f, user.preampDrive + 0.25f * amount (silk, 0.0f, 0.5f));
-    p.deharsh.depth = juce::jlimit (0.0f, 15.0f, user.deharsh.depth + 4.0f * amount (silk, 0.0f, 1.0f));
-    p.comp.thresholdDb = juce::jlimit (-48.0f, 0.0f, user.comp.thresholdDb - 10.0f * amount (silk, 0.25f, 0.85f));
-    p.comp.cotton = juce::jlimit (0.0f, 1.0f, user.comp.cotton + 0.4f * amount (silk, 0.2f, 0.9f));
-    p.air.amount = juce::jlimit (0.0f, 1.0f, user.air.amount + 0.3f * amount (silk, 0.4f, 1.0f));
+    if (on.preamp)
+        p.preampDrive = juce::jlimit (0.0f, 1.0f, user.preampDrive + 0.25f * amount (silk, 0.0f, 0.5f));
 
-    p.outputGainDb = user.outputGainDb + levelTrimDb (silk);
+    if (on.deharsh)
+        p.deharsh.depth = juce::jlimit (0.0f, 15.0f, user.deharsh.depth + 4.0f * amount (silk, 0.0f, 1.0f));
+
+    if (on.comp)
+    {
+        // Threshold and ratio together, so Silk compresses even from a
+        // compressor left at 1:1.
+        const float squeeze = amount (silk, 0.25f, 0.85f);
+        p.comp.thresholdDb = juce::jlimit (-48.0f, 0.0f, user.comp.thresholdDb - 10.0f * squeeze);
+        p.comp.ratio = juce::jlimit (1.0f, 6.0f, user.comp.ratio + squeeze);
+        p.comp.cotton = juce::jlimit (0.0f, 1.0f, user.comp.cotton + 0.4f * amount (silk, 0.2f, 0.9f));
+    }
+
+    if (on.air)
+        p.air.amount = juce::jlimit (0.0f, 1.0f, user.air.amount + 0.3f * amount (silk, 0.4f, 1.0f));
+
+    p.outputGainDb = user.outputGainDb + levelTrimDb (user, p);
     return p;
 }
 
-float SilkMacro::levelTrimDb (float silk)
+float SilkMacro::levelTrimDb (const EngineParams& user, const EngineParams& silked)
 {
-    // Measured on a sung phrase at the house settings (tests/SilkTests.cpp):
-    // more compression loses a little level that auto gain doesn't fully
-    // restore, and pulling everything back loses a touch of preamp density.
-    const float m = (juce::jlimit (0.0f, 1.0f, silk) - 0.5f) * 2.0f;
-    return m > 0.0f ? 1.72f * m * std::sqrt (m) : -0.9f * std::pow (-m, 0.8f);
+    if (! user.sections.comp)
+        return 0.0f;
+
+    return trimPerHeldDb * (heldDownDb (silked.comp) - heldDownDb (user.comp));
 }
 
 } // namespace linen

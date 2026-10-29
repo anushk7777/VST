@@ -2,7 +2,7 @@
 // given) vocal plays through the real processor, so the GUI can be checked
 // without a DAW. Needs a display (use Xvfb on a headless Linux box).
 //
-//   LinenSnapshot <out.png> [in.wav] [--scale 2] [--seconds 3] [--listen] [--param id=value ...]
+//   LinenSnapshot <out.png> [in.wav] [--scale 2] [--seconds 3] [--listen] [--preset N] [--param id=value ...]
 
 #include <juce_audio_formats/juce_audio_formats.h>
 
@@ -77,6 +77,8 @@ public:
                 seconds = args[++i].getDoubleValue();
             else if (args[i] == "--listen")
                 listen = true;
+            else if (args[i] == "--preset" && i + 1 < args.size())
+                processor.loadPreset (args[++i].getIntValue());
             else if (args[i] == "--param" && i + 1 < args.size())
             {
                 const auto setting = args[++i];
