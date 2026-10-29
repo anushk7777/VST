@@ -54,7 +54,7 @@ namespace
         p.comp.thresholdDb = -18.0f;
         p.comp.ratio = 2.0f;
         p.comp.releaseMs = 60.0f;
-        p.comp.cotton = 0.5f;
+        p.comp.warmth = 0.5f;
         p.air.amount = 0.3f;
         p.air.deEss = 0.5f;
         return p;

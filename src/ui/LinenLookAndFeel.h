@@ -39,14 +39,17 @@ private:
     juce::SharedResourcePointer<Typefaces> typefaces;
 };
 
-/** A champagne-metal rotary knob with its own caption and value readout.
-    Its arc lights cobalt while you touch it. Owns its shadows, since
-    melatonin caches them per object. */
+/** A machined champagne-gold knob, as on a boutique console: a knurled
+    skirt that turns with the value, a polished bevel, a brushed top with a
+    sapphire glass cap and a lit cobalt index. Around it a segmented cobalt
+    LED ring shows the setting, outside an engraved scale. The caption sits in
+    the gap at the bottom of the ring (the value while you touch the knob).
+    Owns its shadows, since melatonin caches them per object. */
 class LinenKnob final : public juce::Slider
 {
 public:
     /** A live light around the knob: halo strength (0..1), its colour, and how
-        far the champagne body is tinted toward that colour (0..1). */
+        far the LED ring and body are tinted toward that colour (0..1). */
     struct Glow
     {
         float halo = 0.0f;
@@ -62,14 +65,19 @@ public:
 
     float getKnobDiameter() const noexcept { return diameter; }
 
-    /** Bipolar knobs (gains) draw their value arc out from the centre. */
+    /** The width the knob needs with its LED ring and scale, and its whole
+        height with the caption. */
+    int getFootprint() const;
+    int getPreferredHeight() const;
+
+    /** Bipolar knobs (gains) light their ring out from the centre. */
     void setBipolar (bool shouldBeBipolar) { bipolar = shouldBeBipolar; repaint(); }
 
     /** Gives the knob a live halo, animated on VBlank (Silk, Pain). */
     void setGlow (std::function<Glow()> source);
 
 private:
-    juce::Rectangle<float> knobArea() const;
+    juce::Point<float> knobCentre() const;
 
     juce::String caption;
     float diameter;
@@ -81,11 +89,8 @@ private:
     std::unique_ptr<juce::VBlankAttachment> glowTicker;
 
     melatonin::DropShadow bodyShadow {
-        { linen::palette::espresso.withAlpha (0.20f), 14, { 0, 7 } },
-        { linen::palette::espresso.withAlpha (0.12f), 3, { 0, 1 } }
-    };
-    melatonin::InnerShadow wellShadow {
-        { linen::palette::espresso.withAlpha (0.14f), 6, { 0, 2 } }
+        { linen::palette::espresso.withAlpha (0.32f), 10, { 2, 6 } },
+        { linen::palette::espresso.withAlpha (0.18f), 2, { 0, 1 } }
     };
 };
 
@@ -102,14 +107,22 @@ public:
     int getIdealWidth() const;
 };
 
-/** A section's power switch: a small round button with a power glyph, lit
-    cobalt while the section is in. */
-class LinenPower final : public juce::ToggleButton
+/** A chrome bat-handle toggle on a hex nut, as on vintage hardware: the
+    lever tips up for IN and down for OUT, flipping over in 80 ms. Used for
+    the section switches and the ADC's slots. */
+class LinenToggle final : public juce::ToggleButton
 {
 public:
-    LinenPower();
+    LinenToggle();
 
     void paintButton (juce::Graphics&, bool highlighted, bool down) override;
+
+private:
+    float shown = -1.0f;   // 1 = up (in), 0 = down (out); -1 until first painted
+    float from = 0.0f, to = 0.0f;
+    double flipStart = 0.0;
+    bool flipping = false;
+    juce::VBlankAttachment ticker;
 };
 
 /** A continuous value shown as a small pill (e.g. a shelf's frequency): drag

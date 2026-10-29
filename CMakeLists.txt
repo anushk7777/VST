@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.22)
 
-project(Linen VERSION 0.2.0 LANGUAGES C CXX)
+project(Linen VERSION 0.3.0 LANGUAGES C CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -38,6 +38,7 @@ juce_add_module("${melatonin_blur_SOURCE_DIR}")
 # DSP code has no dependency on the plugin wrapper, so the tests and the render
 # tool compile exactly the same engine the plugin runs.
 set(LINEN_DSP_SOURCES
+    src/dsp/AdcCompressor.cpp
     src/dsp/Air.cpp
     src/dsp/AutoAssist.cpp
     src/dsp/Eq1073.cpp
@@ -46,7 +47,6 @@ set(LINEN_DSP_SOURCES
     src/dsp/Preamp.cpp
     src/dsp/PitchTracker.cpp
     src/dsp/ResonanceSuppressor.cpp
-    src/dsp/SilkCompressor.cpp
     src/dsp/SilkMacro.cpp
     src/dsp/ToneShelves.cpp)
 
@@ -120,6 +120,7 @@ target_sources(LinenTests PRIVATE
     tests/DeharshTests.cpp
     tests/PreampEqTests.cpp
     tests/CompAirTests.cpp
+    tests/AdcTests.cpp
     tests/SilkTests.cpp
     tests/PainTests.cpp
     tests/AssistTests.cpp

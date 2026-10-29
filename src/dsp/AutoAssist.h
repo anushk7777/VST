@@ -37,7 +37,8 @@ struct AssistResult
     float deharshDetail = 0.5f;
     float compThresholdDb = -18.0f;
     float compRatio = 2.0f;
-    float compCotton = 0.5f;
+    float compCotton = 0.5f;        // Warmth
+    float optoReduction = 0.35f;    // the ADC's OPTO leveller
     float airAmount = 0.3f;
     float airDeEss = 0.5f;
 };

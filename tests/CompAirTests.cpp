@@ -1,7 +1,6 @@
 #include "TestSignals.h"
 
 #include "dsp/Air.h"
-#include "dsp/SilkCompressor.h"
 
 namespace linen::test
 {
@@ -37,11 +36,6 @@ namespace
         }
     }
 
-    float rmsDb (const juce::AudioBuffer<float>& b, int start, int length)
-    {
-        return juce::Decibels::gainToDecibels (b.getRMSLevel (0, start, length), -200.0f);
-    }
-
     /** Level (dB) of the part of a signal inside a band, via a 4th-order band-pass. */
     float bandDb (const juce::AudioBuffer<float>& b, double lowHz, double highHz, int start, int length)
     {
@@ -69,200 +63,6 @@ namespace
         return b;
     }
 }
-
-class CompressorTests final : public juce::UnitTest
-{
-public:
-    CompressorTests() : juce::UnitTest ("Silk compressor", "Linen") {}
-
-    void runTest() override
-    {
-        beginTest ("Static curve follows threshold, ratio and the 10 dB soft knee");
-        {
-            for (const float level : { -40.0f, -26.0f, -20.0f, -15.0f, -6.0f })
-            {
-                SilkCompressor comp;
-                CompParams p;
-                p.thresholdDb = -20.0f;
-                p.ratio = 3.0f;
-                p.autoMakeup = false;
-                comp.setParams (p);
-                comp.prepare (sr, block, 1);
-
-                auto tone = silence (48000);
-                addSine (tone, 1000.0, level);
-                runBlocks (comp, tone);
-
-                const float measured = rmsDb (tone, 36000, 9600) - (level - 3.01f);
-                const float expected = SilkCompressor::staticGainDb (level, -20.0f, 3.0f);
-                expectWithinAbsoluteError (measured, expected, 0.5f, "input " + juce::String (level) + " dB");
-            }
-        }
-
-        beginTest ("Optical two-stage release: half lets go fast, the rest slowly, slower after long holds");
-        {
-            struct Recovery { double half, full; };
-
-            const auto recovery = [this] (int burstSamples) -> Recovery
-            {
-                SilkCompressor comp;
-                CompParams p;
-                p.thresholdDb = -30.0f;
-                p.ratio = 4.0f;
-                p.releaseMs = 60.0f;
-                p.autoMakeup = false;
-                comp.setParams (p);
-                comp.prepare (sr, block, 1);
-
-                // Loud burst, then a quiet tone: track the meter as the quiet tone comes back.
-                const int total = burstSamples + 48000 * 8;
-                auto audio = silence (total);
-                addSine (audio, 1000.0, -6.0f, 0, burstSamples);
-                addSine (audio, 1000.0, -50.0f, burstSamples, total);
-
-                float peakGr = 0.0f;
-                Recovery r { -1.0, -1.0 };
-                for (int pos = 0; pos < total; pos += 240)
-                {
-                    juce::AudioBuffer<float> b (audio.getArrayOfWritePointers(), 1, pos, juce::jmin (240, total - pos));
-                    comp.process (b);
-                    const float gr = comp.getGainReductionDb();
-                    if (pos < burstSamples)
-                        peakGr = gr;
-                    else
-                    {
-                        const double t = (double) (pos + 240 - burstSamples) / sr;
-                        if (r.half < 0.0 && gr < peakGr * 0.5f) r.half = t;
-                        if (r.full < 0.0 && gr < 1.0f) r.full = t;
-                    }
-                }
-                expect (r.full > 0.0, "never recovered");
-                return r;
-            };
-
-            const auto afterPeak = recovery (4800);       // 0.1 s
-            const auto afterHold = recovery (48000 * 4);  // 4 s
-            logMessage ("after a peak: half " + juce::String (afterPeak.half, 3) + " s, full " + juce::String (afterPeak.full, 3)
-                        + " s; after a long hold: half " + juce::String (afterHold.half, 3) + " s, full " + juce::String (afterHold.full, 3) + " s");
-            expectLessThan (afterPeak.half, 0.2, "first half releases quickly");
-            expectLessThan (afterHold.half, 0.3, "...even after a long hold");
-            expectGreaterThan (afterHold.full, afterPeak.full * 2.0, "the cell's memory slows the tail after a long hold");
-        }
-
-        beginTest ("Cotton: no colour at all while it isn't compressing");
-        {
-            SilkCompressor comp;
-            CompParams p;
-            p.thresholdDb = -10.0f;
-            p.ratio = 3.0f;
-            p.cotton = 1.0f;
-            p.autoMakeup = false;
-            comp.setParams (p);
-            comp.prepare (sr, block, 1);
-            auto tone = silence (65536);
-            addSine (tone, 500.0, -30.0f);
-            runBlocks (comp, tone);
-            const double h1 = toneDb (tone, 500.0), h2 = toneDb (tone, 1000.0), h3 = toneDb (tone, 1500.0);
-            expectLessThan (h2 - h1, -100.0);
-            expectLessThan (h3 - h1, -100.0);
-        }
-
-        beginTest ("Cotton stays a whisper: under -52 dB at 50% (6 dB GR), under -42 dB at 100% (10 dB GR)");
-        {
-            // A belted 1 kHz note at -6 dBFS peak, with auto gain, as on a real vocal.
-            struct Reading { double thd, h2, h3; float gr; };
-            const auto measure = [] (float cotton, float ratio, float thresholdDb)
-            {
-                SilkCompressor comp;
-                CompParams p;
-                p.thresholdDb = thresholdDb;
-                p.ratio = ratio;
-                p.cotton = cotton;
-                comp.setParams (p);
-                comp.prepare (sr, block, 1);
-                auto tone = sineWave (1000.0, -6.0f, 65536);
-                runBlocks (comp, tone);
-                const double h1 = toneDb (tone, 1000.0);
-                return Reading { thdDb (tone, 1000.0), toneDb (tone, 2000.0) - h1, toneDb (tone, 3000.0) - h1, comp.getGainReductionDb() };
-            };
-
-            const auto half = measure (0.5f, 2.0f, -18.0f);
-            const auto full = measure (1.0f, 3.0f, -21.0f);
-            const auto none = measure (0.0f, 3.0f, -21.0f);
-            logMessage ("cotton 50% at " + juce::String (half.gr, 1) + " dB GR: THD " + juce::String (half.thd, 1)
-                        + " dB; 100% at " + juce::String (full.gr, 1) + " dB GR: THD " + juce::String (full.thd, 1)
-                        + " dB (H2 " + juce::String (full.h2, 1) + ", H3 " + juce::String (full.h3, 1)
-                        + "); cotton 0: " + juce::String (none.thd, 1) + " dB");
-            expectWithinAbsoluteError (half.gr, 6.0f, 1.5f);
-            expectWithinAbsoluteError (full.gr, 10.0f, 1.5f);
-            expectLessThan (half.thd, -52.0);
-            expectLessThan (full.thd, -42.0);
-            expectGreaterThan (full.thd, none.thd + 20.0, "...but the texture is there");
-            expectGreaterThan (full.h2, full.h3, "mostly 2nd harmonic");
-            expectLessThan (none.thd, -90.0, "Cotton 0 adds nothing");
-        }
-
-        beginTest ("Cotton: loud lines turn warmer and softer on top");
-        {
-            const auto shape = [] (float cotton)
-            {
-                SilkCompressor comp;
-                CompParams p;
-                p.thresholdDb = -36.0f;
-                p.ratio = 4.0f;
-                p.cotton = cotton;
-                p.autoMakeup = false;
-                comp.setParams (p);
-                comp.prepare (sr, block, 1);
-                auto noise = whiteNoise (1, 48000 * 2, 0.4f, 4);
-                runBlocks (comp, noise);
-                return std::pair { bandDb (noise, 220, 340, 24000, 48000) - bandDb (noise, 900, 1200, 24000, 48000),
-                                   bandDb (noise, 11000, 15000, 24000, 48000) - bandDb (noise, 900, 1200, 24000, 48000) };
-            };
-
-            const auto [warm1, top1] = shape (1.0f);
-            const auto [warm0, top0] = shape (0.0f);
-            logMessage ("low-mid " + juce::String (warm1 - warm0, 2) + " dB, top " + juce::String (top1 - top0, 2) + " dB");
-            expectGreaterThan (warm1 - warm0, 0.8f, "warmer");
-            expectLessThan (top1 - top0, -1.5f, "softer on top");
-        }
-
-        beginTest ("Side-chain high-pass: low boom pumps it far less than the voice does");
-        {
-            const auto reduction = [] (double hz)
-            {
-                SilkCompressor comp;
-                CompParams p;
-                p.thresholdDb = -24.0f;
-                p.ratio = 3.0f;
-                p.autoMakeup = false;
-                comp.setParams (p);
-                comp.prepare (sr, block, 1);
-                auto tone = silence (48000);
-                addSine (tone, hz, -10.0f);
-                runBlocks (comp, tone);
-                return -(rmsDb (tone, 36000, 9600) - (-10.0f - 3.01f));
-            };
-
-            const float lowGr = reduction (45.0), voiceGr = reduction (1000.0);
-            logMessage ("GR at 45 Hz " + juce::String (lowGr, 1) + " dB, at 1 kHz " + juce::String (voiceGr, 1) + " dB");
-            expectLessThan (lowGr, voiceGr - 4.0f);
-        }
-
-        beginTest ("Ratio 1 is a clean, latency-aligned bypass, even with Cotton up");
-        {
-            SilkCompressor comp;
-            CompParams p;
-            p.cotton = 1.0f;
-            comp.setParams (p);
-            comp.prepare (sr, block, 2);
-            auto in = whiteNoise (2, 24000, 0.9f);
-            auto out = in;
-            runBlocks (comp, out);
-            expect (identicalAfter (in, out, comp.getLatencySamples()), "bit-exact");
-        }
-    }
-};
 
 class AirTests final : public juce::UnitTest
 {
@@ -407,7 +207,6 @@ public:
     }
 };
 
-static CompressorTests compressorTests;
 static AirTests airTests;
 
 } // namespace linen::test

@@ -30,7 +30,8 @@ namespace
         p.deharsh.delta = true;
         p.comp.thresholdDb = -48.0f;
         p.comp.ratio = 6.0f;
-        p.comp.cotton = 1.0f;
+        p.comp.optoReduction = 1.0f;
+        p.comp.warmth = 1.0f;
         p.air.amount = 1.0f;
         p.air.deEss = 1.0f;
         p.silk = 1.0f;
@@ -92,7 +93,7 @@ namespace
             pe.prepare (sr, block, 2);
             ResonanceSuppressor d;
             d.prepare (sr, 2);
-            SilkCompressor c;
+            AdcCompressor c;
             c.prepare (sr, block, 2);
             preamp = p.getLatencySamples();
             pain = pe.getLatencySamples();
@@ -201,14 +202,15 @@ public:
             {
                 auto p = clean();
                 p.comp.ratio = 3.0f;
-                p.comp.cotton = 0.6f;
+                p.comp.optoReduction = 0.4f;
+                p.comp.warmth = 0.6f;
                 isolated (p, lat.preamp + lat.pain + lat.deharsh, 0, [&p] (juce::AudioBuffer<float>& audio)
                 {
-                    SilkCompressor comp;
+                    AdcCompressor comp;
                     comp.setParams (p.comp);
                     comp.prepare (sr, block, audio.getNumChannels());
                     forEachIrregularBlock (audio, block, [&comp] (juce::AudioBuffer<float>& b) { comp.process (b); });
-                }, "Ratio and Cotton");
+                }, "ADC Ratio, Peak Reduction and Warmth");
             }
             {
                 auto p = clean();
@@ -295,7 +297,8 @@ public:
             house.preampDrive = 0.3f;
             house.deharsh.depth = 5.0f;
             house.comp.ratio = 2.0f;
-            house.comp.cotton = 0.5f;
+            house.comp.optoReduction = 0.35f;
+            house.comp.warmth = 0.5f;
             house.air.amount = 0.3f;
             house.air.deEss = 0.5f;
             const auto normal = render (house, in, sr, latency);

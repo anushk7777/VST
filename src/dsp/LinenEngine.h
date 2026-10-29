@@ -7,8 +7,8 @@
 #include "PainEngine.h"
 #include "Preamp.h"
 #include "ResonanceSuppressor.h"
+#include "AdcCompressor.h"
 #include "SectionBypass.h"
-#include "SilkCompressor.h"
 #include "ToneShelves.h"
 
 namespace linen
@@ -50,7 +50,7 @@ struct EngineParams
 
 /** The whole Linen signal chain, independent of the plugin wrapper.
 
-    Input gain → Tone → Preamp → EQ → Pain → De-harsh → Silk comp → Air → Output gain → Mix
+    Input gain → Tone → Preamp → EQ → Pain → De-harsh → ADC comp → Air → Output gain → Mix
 
     The dry signal for Mix is taken before the input gain and delayed by the
     chain's latency, so dry and wet stay sample-aligned at any Mix setting.
@@ -75,6 +75,8 @@ public:
 
     DeharshDisplay& getDeharshDisplay() noexcept { return deharsh.getDisplay(); }
     float getCompReductionDb() const noexcept { return comp.getGainReductionDb(); }
+    float getTubeReductionDb() const noexcept { return comp.getTubeReductionDb(); }
+    float getOptoReductionDb() const noexcept { return comp.getOptoReductionDb(); }
     float getSibilance() const noexcept { return air.getSibilance(); }
     float getPainStress() const noexcept { return painEngine.getStressLevel(); }
 
@@ -104,7 +106,7 @@ private:
     PainEngine painEngine;
     ResonanceSuppressor deharsh;
     std::vector<float> detector;
-    SilkCompressor comp;
+    AdcCompressor comp;
     Air air;
 
     SectionBypass toneSwitch, preampSwitch, deharshSwitch, compSwitch, airSwitch;

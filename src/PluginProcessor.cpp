@@ -85,7 +85,8 @@ void LinenAudioProcessor::applyAssist (const linen::AssistResult& r)
         { id::eqLowFreq, (float) r.lowFreq },  { id::eqLowGain, r.lowGainDb },
         { id::eqMidFreq, (float) r.midFreq },  { id::eqMidGain, r.midGainDb },      { id::eqHighGain, r.highGainDb },
         { id::deharshOn, 1.0f },               { id::deharshDepth, r.deharshDepth }, { id::deharshDetail, r.deharshDetail },
-        { id::compOn, 1.0f },                  { id::compThreshold, r.compThresholdDb }, { id::compRatio, r.compRatio },
+        { id::compOn, 1.0f },                  { id::adcTubeOn, 1.0f },             { id::compThreshold, r.compThresholdDb },
+        { id::compRatio, r.compRatio },        { id::adcOptoOn, 1.0f },             { id::adcOptoReduction, r.optoReduction },
         { id::compCotton, r.compCotton },
         { id::airOn, 1.0f },                   { id::airAmount, r.airAmount },      { id::airDeEss, r.airDeEss },
     };

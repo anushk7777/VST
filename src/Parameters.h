@@ -51,14 +51,18 @@ namespace id
     inline constexpr auto deharshDelta     = "deharsh_delta";
     inline constexpr auto deharshSidechain = "deharsh_sidechain";
 
+    // The ADC compressor. Its TUBE slot keeps the comp_* IDs from 0.1/0.2.
     inline constexpr auto compOn        = "comp_on";
+    inline constexpr auto adcTubeOn     = "adc_tube_on";
     inline constexpr auto compThreshold = "comp_threshold";
     inline constexpr auto compRatio     = "comp_ratio";
     inline constexpr auto compAttack    = "comp_attack";
     inline constexpr auto compRelease   = "comp_release";
     inline constexpr auto compMakeup    = "comp_makeup";
     inline constexpr auto compMix       = "comp_mix";
-    inline constexpr auto compCotton    = "comp_cotton";
+    inline constexpr auto compCotton    = "comp_cotton";     // Warmth
+    inline constexpr auto adcOptoOn     = "adc_opto_on";
+    inline constexpr auto adcOptoReduction = "adc_opto_reduction";
 
     inline constexpr auto airOn     = "air_on";
     inline constexpr auto airAmount = "air_amount";
@@ -67,6 +71,7 @@ namespace id
 
 inline constexpr int version = 1;      // parameters since 0.1
 inline constexpr int version2 = 2;     // added in 0.2: Tone, power switches, Null
+inline constexpr int version3 = 3;     // added in 0.3: the ADC compressor's slots
 
 inline juce::String formatDb (float value, int)
 {
@@ -219,25 +224,33 @@ inline juce::AudioProcessorValueTreeState::ParameterLayout createLayout()
     layout.add (std::make_unique<Bool> (juce::ParameterID { id::deharshDelta, version }, "De-harsh Delta", false));
     layout.add (std::make_unique<Bool> (juce::ParameterID { id::deharshSidechain, version }, "De-harsh Sidechain", false));
 
-    // Silk compressor (ratio 1:1 = not compressing)
-    layout.add (std::make_unique<Bool> (juce::ParameterID { id::compOn, version2 }, "Comp On", true));
-    layout.add (std::make_unique<Float> (juce::ParameterID { id::compThreshold, version }, "Comp Threshold",
+    // ADC compressor (Anushk Dua Circuit). TUBE: ratio 1:1 = off. OPTO: reduction 0 = off.
+    layout.add (std::make_unique<Bool> (juce::ParameterID { id::compOn, version2 }, "ADC On", true));
+    layout.add (std::make_unique<Bool> (juce::ParameterID { id::adcTubeOn, version3 }, "ADC Tube On", true));
+    layout.add (std::make_unique<Float> (juce::ParameterID { id::compThreshold, version }, "ADC Tube Threshold",
                                          juce::NormalisableRange<float> (-48.0f, 0.0f, 0.1f), -18.0f,
                                          Attributes().withLabel ("dB").withStringFromValueFunction (formatDb)));
-    layout.add (std::make_unique<Float> (juce::ParameterID { id::compRatio, version }, "Comp Ratio",
+    // The stored value is the knob's travel (1..6, kept from 0.1); it reads
+    // the ratio the tube really leans at as its knee begins (1:1 to about 2.3:1).
+    layout.add (std::make_unique<Float> (juce::ParameterID { id::compRatio, version }, "ADC Tube Ratio",
                                          centredRange (1.0f, 6.0f, 2.5f, 0.01f), 1.0f,
                                          Attributes().withStringFromValueFunction ([] (float v, int)
-                                                                                   { return juce::String (v, 1) + ":1"; })));
-    layout.add (std::make_unique<Float> (juce::ParameterID { id::compAttack, version }, "Comp Attack",
+                                                                                   { return juce::String (AdcCompressor::tubeRatioFor (v), 2) + ":1"; })
+                                                     .withValueFromStringFunction ([] (const juce::String& text)
+                                                                                   { return AdcCompressor::ratioKnobFor (text.getFloatValue()); })));
+    layout.add (std::make_unique<Float> (juce::ParameterID { id::compAttack, version }, "ADC Tube Attack",
                                          centredRange (1.0f, 80.0f, 12.0f, 0.01f), 12.0f,
                                          Attributes().withLabel ("ms").withStringFromValueFunction (formatMs)));
-    layout.add (std::make_unique<Float> (juce::ParameterID { id::compRelease, version }, "Comp Release",
+    layout.add (std::make_unique<Float> (juce::ParameterID { id::compRelease, version }, "ADC Tube Release",
                                          centredRange (20.0f, 400.0f, 80.0f, 0.1f), 60.0f,
                                          Attributes().withLabel ("ms").withStringFromValueFunction (formatMs)));
-    layout.add (std::make_unique<Bool> (juce::ParameterID { id::compMakeup, version }, "Comp Auto Makeup", true));
-    layout.add (std::make_unique<Float> (juce::ParameterID { id::compMix, version }, "Comp Mix",
+    layout.add (std::make_unique<Bool> (juce::ParameterID { id::adcOptoOn, version3 }, "ADC Opto On", true));
+    layout.add (std::make_unique<Float> (juce::ParameterID { id::adcOptoReduction, version3 }, "ADC Opto Peak Reduction",
+                                         juce::NormalisableRange<float> (0.0f, 1.0f, 0.001f), 0.0f, percentAttributes));
+    layout.add (std::make_unique<Bool> (juce::ParameterID { id::compMakeup, version }, "ADC Auto Gain", true));
+    layout.add (std::make_unique<Float> (juce::ParameterID { id::compMix, version }, "ADC Blend",
                                          juce::NormalisableRange<float> (0.0f, 1.0f, 0.001f), 1.0f, percentAttributes));
-    layout.add (std::make_unique<Float> (juce::ParameterID { id::compCotton, version }, "Comp Cotton",
+    layout.add (std::make_unique<Float> (juce::ParameterID { id::compCotton, version }, "ADC Warmth",
                                          juce::NormalisableRange<float> (0.0f, 1.0f, 0.001f), 0.0f, percentAttributes));
 
     // Air
@@ -286,6 +299,7 @@ struct Handles
           deharshDelta     (*state.getRawParameterValue (id::deharshDelta)),
           deharshSidechain (*state.getRawParameterValue (id::deharshSidechain)),
           compOn           (*state.getRawParameterValue (id::compOn)),
+          adcTubeOn        (*state.getRawParameterValue (id::adcTubeOn)),
           compThreshold    (*state.getRawParameterValue (id::compThreshold)),
           compRatio        (*state.getRawParameterValue (id::compRatio)),
           compAttack       (*state.getRawParameterValue (id::compAttack)),
@@ -293,6 +307,8 @@ struct Handles
           compMakeup       (*state.getRawParameterValue (id::compMakeup)),
           compMix          (*state.getRawParameterValue (id::compMix)),
           compCotton       (*state.getRawParameterValue (id::compCotton)),
+          adcOptoOn        (*state.getRawParameterValue (id::adcOptoOn)),
+          adcOptoReduction (*state.getRawParameterValue (id::adcOptoReduction)),
           airOn            (*state.getRawParameterValue (id::airOn)),
           airAmount        (*state.getRawParameterValue (id::airAmount)),
           airDeEss         (*state.getRawParameterValue (id::airDeEss))
@@ -341,13 +357,16 @@ struct Handles
         d.delta       = deharshDelta.load() > 0.5f;
         p.deharshSidechain = deharshSidechain.load() > 0.5f;
 
+        p.comp.tubeOn      = adcTubeOn.load() > 0.5f;
         p.comp.thresholdDb = compThreshold.load();
         p.comp.ratio       = compRatio.load();
         p.comp.attackMs    = compAttack.load();
         p.comp.releaseMs   = compRelease.load();
         p.comp.autoMakeup  = compMakeup.load() > 0.5f;
         p.comp.mix         = compMix.load();
-        p.comp.cotton      = compCotton.load();
+        p.comp.warmth      = compCotton.load();
+        p.comp.optoOn      = adcOptoOn.load() > 0.5f;
+        p.comp.optoReduction = adcOptoReduction.load();
 
         p.air.amount = airAmount.load();
         p.air.deEss  = airDeEss.load();
@@ -386,6 +405,7 @@ struct Handles
     std::atomic<float>& deharshDelta;
     std::atomic<float>& deharshSidechain;
     std::atomic<float>& compOn;
+    std::atomic<float>& adcTubeOn;
     std::atomic<float>& compThreshold;
     std::atomic<float>& compRatio;
     std::atomic<float>& compAttack;
@@ -393,6 +413,8 @@ struct Handles
     std::atomic<float>& compMakeup;
     std::atomic<float>& compMix;
     std::atomic<float>& compCotton;
+    std::atomic<float>& adcOptoOn;
+    std::atomic<float>& adcOptoReduction;
     std::atomic<float>& airOn;
     std::atomic<float>& airAmount;
     std::atomic<float>& airDeEss;

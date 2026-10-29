@@ -1,6 +1,7 @@
 // LinenCheck: loads the built Linen.vst3 the way a DAW does, and checks it.
 //
 //   LinenCheck <path/to/Linen.vst3> [--plot null.png] [--wav vocal.wav]
+//              [--warmth warmth.png [--compare other/Linen.vst3 ...]]
 //
 // 1. Null (phase) test. A fresh Linen (the Clean preset) plays test audio
 //    (noise, a sung vowel, a full-scale sweep and silence, or the given WAV)
@@ -11,6 +12,11 @@
 // 2. Distortion by preset: THD (harmonics 2-9) of a 1 kHz and a 220 Hz note
 //    at -6 dBFS peak and -18 dBFS RMS. Presets without Pain must stay under
 //    -45 dB on the -6 dBFS notes.
+// 3. Warmth (with --warmth): THD against level for the house sound, next to
+//    the range real hardware is specified at, and each preset's harmonic
+//    fingerprint (H2-H5) on a -12 dBFS note (about +10 dBu, where the
+//    classics publish their figures). --compare adds other builds' house
+//    sound to the chart, e.g. older versions.
 //
 // Exits with 0 when everything passes.
 
@@ -199,8 +205,14 @@ namespace
         return 20.0 * std::log10 (2.0 * std::sqrt (re * re + im * im) / wsum + 1.0e-20);
     }
 
-    /** THD (dB re the note) of a steady note, measured after 1.3 s of settling. */
-    double measure (juce::AudioPluginInstance& plugin, double sr, double hz, double peakDb)
+    struct Harmonics
+    {
+        double thdDb = -140.0;              // harmonics 2-9, dB re the note
+        std::array<double, 4> hDb {};       // H2..H5, dB re the note
+    };
+
+    /** THD and harmonics of a steady note, measured after 1.3 s of settling. */
+    Harmonics measure (juce::AudioPluginInstance& plugin, double sr, double hz, double peakDb)
     {
         plugin.releaseResources();
         plugin.prepareToPlay (sr, maxBlock);   // start from rest, as a fresh insert would
@@ -211,11 +223,35 @@ namespace
 
         const float* y = out.getReadPointer (0, settle + plugin.getLatencySamples());
         const double fundamental = toneDb (y, length, sr, hz);
+        Harmonics h;
         double power = 0.0;
         for (int n = 2; n <= 9 && n * hz < sr * 0.45; ++n)
-            power += std::pow (10.0, toneDb (y, length, sr, n * hz) / 10.0);
+        {
+            const double db = toneDb (y, length, sr, n * hz);
+            power += std::pow (10.0, db / 10.0);
+            if (n <= 5)
+                h.hDb[(size_t) (n - 2)] = juce::jmax (-140.0, db - fundamental);
+        }
+        h.thdDb = juce::jmax (-140.0, 10.0 * std::log10 (power + 1.0e-30) - fundamental);
+        return h;
+    }
 
-        return juce::jmax (-140.0, 10.0 * std::log10 (power + 1.0e-30) - fundamental);
+    /** Loads a preset by index and makes sure the processor has it. */
+    void choose (juce::AudioPluginInstance& plugin, int program)
+    {
+        plugin.setCurrentProgram (program);
+        juce::MidiBuffer midi;
+        juce::AudioBuffer<float> nudge (2, 64);
+        nudge.clear();
+        plugin.processBlock (nudge, midi);
+    }
+
+    int programNamed (juce::AudioPluginInstance& plugin, const juce::String& name)
+    {
+        for (int i = 0; i < plugin.getNumPrograms(); ++i)
+            if (plugin.getProgramName (i) == name)
+                return i;
+        return -1;
     }
 
     //==========================================================================
@@ -295,6 +331,178 @@ namespace
         if (stream.openedOk() && png.writeImageToStream (image, stream))
             std::cout << "   wrote " << file.getFullPathName() << std::endl;
     }
+
+    //==========================================================================
+    // Warmth
+
+    const double warmthLevels[] { -24.0, -21.0, -18.0, -15.0, -12.0, -9.0, -6.0, -3.0 };
+
+    double percent (double db) { return 100.0 * std::pow (10.0, db / 20.0); }
+
+    struct Curve
+    {
+        juce::String label;
+        std::vector<std::pair<double, double>> points;   // note peak (dBFS), THD (dB)
+    };
+
+    struct Fingerprint
+    {
+        juce::String preset;
+        Harmonics note;   // a 1 kHz note at -12 dBFS
+    };
+
+    /** THD against level for one build's House Silk preset. */
+    Curve houseCurve (const juce::PluginDescription& description, const juce::String& label)
+    {
+        Curve curve;
+        curve.label = label;
+        auto plugin = load (description, 48000.0, 2);
+        if (plugin == nullptr)
+            return curve;
+
+        const int house = programNamed (*plugin, "House Silk");
+        if (house < 0)
+            return curve;
+
+        choose (*plugin, house);
+        for (const double level : warmthLevels)
+            curve.points.push_back ({ level, measure (*plugin, 48000.0, 1000.0, level).thdDb });
+        return curve;
+    }
+
+    void drawWarmth (const juce::File& file, const std::vector<Curve>& curves, const std::vector<Fingerprint>& prints)
+    {
+        constexpr int width = 1500, height = 900;
+        juce::Image image (juce::Image::RGB, width, height, true, juce::SoftwareImageType());
+        {
+            juce::Graphics g (image);
+            const auto sans = juce::Typeface::createSystemTypefaceFor (LinenBinary::InterRegular_ttf, (size_t) LinenBinary::InterRegular_ttfSize);
+            const auto serif = juce::Typeface::createSystemTypefaceFor (LinenBinary::CormorantGaramondMedium_ttf,
+                                                                        (size_t) LinenBinary::CormorantGaramondMedium_ttfSize);
+            const auto font = [] (const juce::Typeface::Ptr& face, float h) { return juce::Font (juce::FontOptions (face).withHeight (h)); };
+            const juce::Colour paper (0xfff6f3ec), ink (0xff221e1c), well (0xffebe4d8), champagne (0xffc8a96e);
+            const juce::Colour lineColours[] { juce::Colour (0xffd1493f), juce::Colour (0xffb08f55), juce::Colour (0xff1f4fff),
+                                               juce::Colour (0xff4f7a3a), juce::Colour (0xff7a4f9e) };
+
+            g.fillAll (paper);
+            g.setColour (ink);
+            g.setFont (font (serif, 36.0f));
+            g.drawText ("Linen: is the analog warmth still there?", 70, 22, width - 140, 46, juce::Justification::centredLeft);
+            g.setColour (ink.withAlpha (0.62f));
+            g.setFont (font (sans, 15.0f));
+            g.drawText ("Distortion of a sung-level 1 kHz note through the House Silk preset, against how loud the note is. "
+                        "The shaded band is where the classic hardware is specified.",
+                        70, 70, width - 140, 22, juce::Justification::centredLeft);
+
+            // Left: THD against level, log scale from 0.01% to 20%.
+            const juce::Rectangle<float> chart (110.0f, 150.0f, 640.0f, 600.0f);
+            const auto xFor = [&] (double dbfs) { return chart.getX() + (float) ((dbfs + 24.0) / 21.0) * chart.getWidth(); };
+            const auto yFor = [&] (double thdDb)
+            {
+                const double pct = juce::jlimit (0.01, 20.0, percent (thdDb));
+                const double t = (std::log10 (pct) - std::log10 (0.01)) / (std::log10 (20.0) - std::log10 (0.01));
+                return chart.getBottom() - (float) t * chart.getHeight();
+            };
+
+            g.setColour (well);
+            g.fillRoundedRectangle (chart.expanded (4.0f), 10.0f);
+
+            // The hardware band: 0.1% to 0.5%.
+            const float bandTop = yFor (20.0 * std::log10 (0.005)), bandBottom = yFor (20.0 * std::log10 (0.001));
+            g.setColour (champagne.withAlpha (0.35f));
+            g.fillRect (juce::Rectangle<float>::leftTopRightBottom (chart.getX(), bandTop, chart.getRight(), bandBottom));
+            g.setColour (ink.withAlpha (0.7f));
+            g.setFont (font (sans, 13.0f));
+            g.drawFittedText ("Classic hardware, as specified: LA-2A 0.25% typ. (under 0.5%) at +10 dBm; "
+                              "33609 about 0.2% compressing; 1176 under 0.5% at +22.5 dBu",
+                              juce::Rectangle<float> (chart.getX() + 10.0f, bandTop + 2.0f, chart.getWidth() - 20.0f, bandBottom - bandTop - 4.0f).toNearestInt(),
+                              juce::Justification::centredLeft, 2);
+
+            g.setFont (font (sans, 13.0f));
+            for (const double pct : { 0.01, 0.1, 1.0, 10.0 })
+            {
+                const float y = yFor (20.0 * std::log10 (pct / 100.0));
+                g.setColour (ink.withAlpha (0.12f));
+                g.drawHorizontalLine ((int) y, chart.getX(), chart.getRight());
+                g.setColour (ink.withAlpha (0.6f));
+                g.drawText (juce::String (pct, pct < 0.1 ? 2 : (pct < 1.0 ? 1 : 0)) + "%", 30, (int) y - 9, 70, 18, juce::Justification::centredRight);
+            }
+            for (const double level : { -24.0, -18.0, -12.0, -6.0, -3.0 })
+            {
+                const float x = xFor (level);
+                g.setColour (ink.withAlpha (0.12f));
+                g.drawVerticalLine ((int) x, chart.getY(), chart.getBottom());
+                g.setColour (ink.withAlpha (0.6f));
+                g.drawText (juce::String ((int) level) + " dBFS", (int) x - 40, (int) chart.getBottom() + 8, 80, 18, juce::Justification::centred);
+            }
+            g.drawText ("how loud the note is (peak)", (int) chart.getX(), (int) chart.getBottom() + 30, (int) chart.getWidth(), 18,
+                        juce::Justification::centred);
+
+            for (size_t c = 0; c < curves.size(); ++c)
+            {
+                const auto colour = lineColours[c % 5];
+                juce::Path line;
+                for (size_t i = 0; i < curves[c].points.size(); ++i)
+                {
+                    const juce::Point<float> pt (xFor (curves[c].points[i].first), yFor (curves[c].points[i].second));
+                    if (i == 0)
+                        line.startNewSubPath (pt);
+                    else
+                        line.lineTo (pt);
+                    g.setColour (colour);
+                    g.fillEllipse (juce::Rectangle<float> (7.0f, 7.0f).withCentre (pt));
+                }
+                g.setColour (colour);
+                g.strokePath (line, juce::PathStrokeType (2.6f, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
+
+                // Legend.
+                const float ly = chart.getY() + 14.0f + 24.0f * (float) c;
+                g.fillRoundedRectangle (chart.getX() + 16.0f, ly - 2.0f, 26.0f, 4.0f, 2.0f);
+                g.setColour (ink);
+                g.setFont (font (sans, 15.0f));
+                g.drawText (curves[c].label, (int) chart.getX() + 50, (int) ly - 10, 400, 20, juce::Justification::centredLeft);
+            }
+
+            // Right: each preset's harmonic fingerprint on a -12 dBFS note.
+            const float px = 820.0f, pw = 620.0f;
+            g.setColour (ink);
+            g.setFont (font (serif, 24.0f));
+            g.drawText ("Harmonic fingerprint, this build", (int) px, 140, (int) pw, 30, juce::Justification::centredLeft);
+            g.setColour (ink.withAlpha (0.62f));
+            g.setFont (font (sans, 13.0f));
+            g.drawText ("Each harmonic of a 1 kHz note at -12 dBFS (about +10 dBu), in dB under the note. "
+                        "Warmth = the 2nd leading.", (int) px, 172, (int) pw, 18, juce::Justification::centredLeft);
+
+            const juce::String names[] { "2nd", "3rd", "4th", "5th" };
+            const juce::Colour barColours[] { juce::Colour (0xffb08f55), juce::Colour (0xff1f4fff), juce::Colour (0xffc8a96e), juce::Colour (0xff7c9bff) };
+            const float rowH = juce::jmin (64.0f, 600.0f / (float) juce::jmax<size_t> (1, prints.size()));
+            for (size_t r = 0; r < prints.size(); ++r)
+            {
+                const float y = 206.0f + rowH * (float) r;
+                g.setColour (ink);
+                g.setFont (font (sans, 14.0f));
+                g.drawText (prints[r].preset, (int) px, (int) y, 170, (int) rowH - 6, juce::Justification::centredLeft);
+                for (int h = 0; h < 4; ++h)
+                {
+                    const double db = prints[r].note.hDb[(size_t) h];
+                    const float barW = (float) juce::jlimit (0.0, 1.0, (db + 110.0) / 90.0) * (pw - 300.0f);
+                    const float by = y + 3.0f + (float) h * (rowH - 10.0f) / 4.0f;
+                    g.setColour (barColours[h].withAlpha (db <= -110.0 ? 0.15f : 0.9f));
+                    g.fillRoundedRectangle (px + 180.0f, by, juce::jmax (2.0f, barW), (rowH - 14.0f) / 4.0f, 2.0f);
+                    g.setColour (ink.withAlpha (0.7f));
+                    g.setFont (font (sans, 11.0f));
+                    g.drawText (names[h] + (db <= -110.0 ? juce::String ("  none") : "  " + juce::String (juce::roundToInt (db)) + " dB"),
+                                (int) (px + 186.0f + barW), (int) by - 3, 120, 14, juce::Justification::centredLeft);
+                }
+            }
+        }
+
+        file.deleteFile();
+        juce::FileOutputStream stream (file);
+        juce::PNGImageFormat png;
+        if (stream.openedOk() && png.writeImageToStream (image, stream))
+            std::cout << "   wrote " << file.getFullPathName() << std::endl;
+    }
 }
 
 int main (int argc, char** argv)
@@ -307,17 +515,20 @@ int main (int argc, char** argv)
 
     if (args.isEmpty())
     {
-        std::cout << "usage: LinenCheck <path/to/Linen.vst3> [--plot null.png] [--wav vocal.wav]" << std::endl;
+        std::cout << "usage: LinenCheck <path/to/Linen.vst3> [--plot null.png] [--wav vocal.wav] [--warmth warmth.png [--compare other.vst3 ...]]" << std::endl;
         return 2;
     }
 
     const auto cwd = juce::File::getCurrentWorkingDirectory();
     const auto pluginFile = cwd.getChildFile (args[0]);
-    juce::File plotFile, wavFile;
+    juce::File plotFile, wavFile, warmthFile;
+    juce::Array<juce::File> compareWith;
     for (int i = 1; i + 1 < args.size(); i += 2)
     {
-        if (args[i] == "--plot") plotFile = cwd.getChildFile (args[i + 1]);
-        if (args[i] == "--wav")  wavFile = cwd.getChildFile (args[i + 1]);
+        if (args[i] == "--plot")    plotFile = cwd.getChildFile (args[i + 1]);
+        if (args[i] == "--wav")     wavFile = cwd.getChildFile (args[i + 1]);
+        if (args[i] == "--warmth")  warmthFile = cwd.getChildFile (args[i + 1]);
+        if (args[i] == "--compare") compareWith.add (cwd.getChildFile (args[i + 1]));
     }
 
     juce::VST3PluginFormat format;
@@ -389,9 +600,10 @@ int main (int argc, char** argv)
         auto plugin = load (description, 48000.0, 2);
         const std::pair<const char*, float> settings[] {
             { "Tone Low Shelf Gain", 0.0f }, { "Tone High Shelf Gain", 1.0f }, { "Preamp Drive", 1.0f }, { "EQ Low Gain", 1.0f },
-            { "EQ Mid Gain", 0.0f }, { "EQ High Gain (12 kHz)", 1.0f }, { "De-harsh Depth", 1.0f }, { "Comp Ratio", 1.0f },
-            { "Comp Threshold", 0.0f }, { "Comp Cotton", 1.0f }, { "Air", 1.0f }, { "Air De-ess", 1.0f }, { "Silk", 1.0f },
-            { "Tone On", 0.0f }, { "Preamp On", 0.0f }, { "De-harsh On", 0.0f }, { "Comp On", 0.0f }, { "Air On", 0.0f } };
+            { "EQ Mid Gain", 0.0f }, { "EQ High Gain (12 kHz)", 1.0f }, { "De-harsh Depth", 1.0f }, { "ADC Tube Ratio", 1.0f },
+            { "ADC Tube Threshold", 0.0f }, { "ADC Opto Peak Reduction", 1.0f }, { "ADC Warmth", 1.0f }, { "Air", 1.0f },
+            { "Air De-ess", 1.0f }, { "Silk", 1.0f },
+            { "Tone On", 0.0f }, { "Preamp On", 0.0f }, { "De-harsh On", 0.0f }, { "ADC On", 0.0f }, { "Air On", 0.0f } };
         bool found = true;
         for (const auto& [name, value] : settings)
         {
@@ -426,19 +638,15 @@ int main (int argc, char** argv)
 
         for (int program = 0; program < plugin->getNumPrograms(); ++program)
         {
-            plugin->setCurrentProgram (program);
-            juce::MidiBuffer midi;
-            juce::AudioBuffer<float> nudge (2, 64);   // delivers the preset to the processor
-            nudge.clear();
-            plugin->processBlock (nudge, midi);
+            choose (*plugin, program);
 
             const bool meantToCrack = painParameter != nullptr && painParameter->getValue() > 0.0f;
             const auto name = plugin->getProgramName (program);
 
-            const auto loud1k = measure (*plugin, 48000.0, 1000.0, -6.0);
-            const auto soft1k = measure (*plugin, 48000.0, 1000.0, -15.0);
-            const auto loud220 = measure (*plugin, 48000.0, 220.0, -6.0);
-            const auto soft220 = measure (*plugin, 48000.0, 220.0, -15.0);
+            const auto loud1k = measure (*plugin, 48000.0, 1000.0, -6.0).thdDb;
+            const auto soft1k = measure (*plugin, 48000.0, 1000.0, -15.0).thdDb;
+            const auto loud220 = measure (*plugin, 48000.0, 220.0, -6.0).thdDb;
+            const auto soft220 = measure (*plugin, 48000.0, 220.0, -15.0).thdDb;
 
             // Below -120 dB is the float rounding of the test tone itself: nothing added.
             const auto cell = [] (double thd) { return (thd <= -120.0 ? juce::String ("none") : juce::String (thd, 1) + " dB").paddedLeft (' ', 13); };
@@ -449,6 +657,54 @@ int main (int argc, char** argv)
                 failures.add (name + " distorts more than " + juce::String (budgetDb, 0) + " dB on a -6 dBFS note");
         }
         std::cout << "   (Presets with Pain are meant to crack and strain, so they are shown but not held to the budget.)" << std::endl;
+    }
+
+    //==========================================================================
+    if (warmthFile != juce::File())
+    {
+        std::cout << "\n3. Warmth: THD of a 1 kHz note through House Silk, against level (hardware is specified at about 0.1-0.5%)\n   "
+                  << juce::String ("build").paddedRight (' ', 24);
+        for (const double level : warmthLevels)
+            std::cout << juce::String ((int) level).paddedLeft (' ', 7);
+        std::cout << "  dBFS" << std::endl;
+
+        std::vector<Curve> curves;
+        for (const auto& other : compareWith)
+        {
+            juce::OwnedArray<juce::PluginDescription> otherTypes;
+            format.findAllTypesForFile (otherTypes, other.getFullPathName());
+            if (! otherTypes.isEmpty())
+                curves.push_back (houseCurve (*otherTypes[0], "Linen " + otherTypes[0]->version));
+        }
+        curves.push_back (houseCurve (description, "Linen " + description.version + " (this build)"));
+
+        for (const auto& curve : curves)
+        {
+            std::cout << "   " << curve.label.paddedRight (' ', 24);
+            for (const auto& [level, thd] : curve.points)
+                std::cout << (juce::String (percent (thd), 2) + "%").paddedLeft (' ', 7);
+            std::cout << std::endl;
+        }
+
+        std::cout << "\n   Harmonic fingerprint (dB under a 1 kHz note at -12 dBFS)\n   "
+                  << juce::String ("preset").paddedRight (' ', 22) << "    2nd     3rd     4th     5th" << std::endl;
+        std::vector<Fingerprint> prints;
+        auto plugin = load (description, 48000.0, 2);
+        for (int program = 0; program < plugin->getNumPrograms(); ++program)
+        {
+            choose (*plugin, program);
+            Fingerprint f;
+            f.preset = plugin->getProgramName (program);
+            f.note = measure (*plugin, 48000.0, 1000.0, -12.0);
+            prints.push_back (f);
+
+            std::cout << "   " << f.preset.paddedRight (' ', 22);
+            for (const double h : f.note.hDb)
+                std::cout << (h <= -110.0 ? juce::String ("none") : juce::String (h, 1)).paddedLeft (' ', 8);
+            std::cout << std::endl;
+        }
+
+        drawWarmth (warmthFile, curves, prints);
     }
 
     std::cout << "\n" << (failures.count == 0 ? "ALL CHECKS PASSED" : "CHECKS FAILED: " + std::to_string (failures.count)) << std::endl;

@@ -20,7 +20,8 @@ namespace
         p.comp.ratio = 2.0f;
         p.comp.attackMs = 12.0f;
         p.comp.releaseMs = 60.0f;
-        p.comp.cotton = 0.5f;
+        p.comp.optoReduction = 0.35f;
+        p.comp.warmth = 0.5f;
         p.air.amount = 0.3f;
         p.air.deEss = 0.5f;
         return p;
@@ -59,7 +60,7 @@ public:
             expectEquals (p.preampDrive, user.preampDrive);
             expectEquals (p.deharsh.depth, user.deharsh.depth);
             expectEquals (p.comp.thresholdDb, user.comp.thresholdDb);
-            expectEquals (p.comp.cotton, user.comp.cotton);
+            expectEquals (p.comp.warmth, user.comp.warmth);
             expectEquals (p.air.amount, user.air.amount);
             expectEquals (p.outputGainDb, user.outputGainDb);
 
@@ -92,6 +93,7 @@ public:
             expectEquals (p.preampDrive, user.preampDrive);
             expectEquals (p.comp.thresholdDb, user.comp.thresholdDb);
             expectEquals (p.comp.ratio, user.comp.ratio);
+            expectEquals (p.comp.optoReduction, user.comp.optoReduction);
             expectEquals (p.air.amount, user.air.amount);
             expectEquals (p.outputGainDb, user.outputGainDb, "no trim for a compressor that is off");
             expectGreaterThan (p.deharsh.depth, user.deharsh.depth, "De-harsh is still on");
@@ -105,7 +107,9 @@ public:
             expectGreaterThan (up.deharsh.depth, user.deharsh.depth);
             expectLessThan (up.comp.thresholdDb, user.comp.thresholdDb);
             expectGreaterThan (up.comp.ratio, user.comp.ratio);
-            expectGreaterThan (up.comp.cotton, user.comp.cotton);
+            expectGreaterThan (up.comp.optoReduction, user.comp.optoReduction);
+            expectLessThan (down.comp.optoReduction, user.comp.optoReduction);
+            expectGreaterThan (up.comp.warmth, user.comp.warmth);
             expectGreaterThan (up.air.amount, user.air.amount);
             expectLessThan (down.preampDrive, user.preampDrive);
             expectLessThan (down.deharsh.depth, user.deharsh.depth);

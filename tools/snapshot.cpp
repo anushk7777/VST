@@ -2,7 +2,7 @@
 // given) vocal plays through the real processor, so the GUI can be checked
 // without a DAW. Needs a display (use Xvfb on a headless Linux box).
 //
-//   LinenSnapshot <out.png> [in.wav] [--scale 2] [--seconds 3] [--listen] [--preset N] [--param id=value ...]
+//   LinenSnapshot <out.png> [in.wav] [--scale 2] [--width 1200] [--seconds 3] [--listen] [--preset N] [--param id=value ...]
 
 #include <juce_audio_formats/juce_audio_formats.h>
 
@@ -73,6 +73,8 @@ public:
         {
             if (args[i] == "--scale" && i + 1 < args.size())
                 scale = args[++i].getFloatValue();
+            else if (args[i] == "--width" && i + 1 < args.size())
+                width = args[++i].getIntValue();
             else if (args[i] == "--seconds" && i + 1 < args.size())
                 seconds = args[++i].getDoubleValue();
             else if (args[i] == "--listen")
@@ -111,7 +113,10 @@ public:
 
         window = std::make_unique<juce::DocumentWindow> ("Linen", juce::Colours::black, 0);
         window->setUsingNativeTitleBar (true);
-        window->setContentOwned (processor.createEditor(), true);
+        auto* editor = processor.createEditor();
+        if (width > 0)
+            editor->setSize (width, width * LinenAudioProcessorEditor::designHeight / LinenAudioProcessorEditor::designWidth);
+        window->setContentOwned (editor, true);
         window->setTopLeftPosition (40, 40);
         window->setVisible (true);
 
@@ -163,6 +168,7 @@ private:
     std::unique_ptr<juce::DocumentWindow> window;
     juce::File outFile;
     float scale = 2.0f;
+    int width = 0;   // 0: the editor's own default size
     double seconds = 3.0;
     bool listen = false;
     int position = 0;

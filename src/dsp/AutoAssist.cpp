@@ -279,6 +279,9 @@ AssistResult AutoAssist::analyse (const float* x, int n, double sr)
     r.compRatio = r.dynamicsDb > 18.0f ? 3.0f : (r.dynamicsDb > 12.0f ? 2.5f : 2.0f);
     r.compCotton = juce::jlimit (0.2f, 0.8f, 0.5f + (thin || r.dullDb > 2.0f ? 0.15f : 0.0f) - (r.mudDb > 1.5f ? 0.15f : 0.0f));
 
+    // The opto levels the line under the tube: more for a singer with big dynamics.
+    r.optoReduction = r.dynamicsDb > 18.0f ? 0.45f : (r.dynamicsDb > 12.0f ? 0.4f : 0.3f);
+
     r.airAmount = roundTo (juce::jlimit (0.1f, 0.65f, 0.3f + r.dullDb * 0.08f), 0.05f);
     r.airDeEss = roundTo (juce::jlimit (0.2f, 0.9f, 0.35f + (r.sibilanceDb + 10.0f) * 0.03f), 0.05f);
 
@@ -298,7 +301,8 @@ AssistResult AutoAssist::analyse (const float* x, int n, double sr)
         did.add ("low shelf " + juce::String (r.toneLowGainDb, 1) + " dB under " + juce::String (juce::roundToInt (r.toneLowHz)) + " Hz");
     if (r.lowGainDb > 0.0f) did.add ("low lift +" + juce::String (r.lowGainDb, 1) + " dB");
     if (! juce::exactlyEqual (r.highGainDb, 0.0f)) did.add ("12k " + juce::String (r.highGainDb, 1) + " dB");
-    did.add ("comp " + juce::String (r.compRatio, 1) + ":1 at " + juce::String (r.compThresholdDb, 1) + " dB");
+    did.add ("ADC tube " + juce::String (r.compRatio, 1) + ":1 at " + juce::String (r.compThresholdDb, 1) + " dB, opto "
+             + juce::String (juce::roundToInt (r.optoReduction * 100.0f)) + "%");
     did.add ("de-ess " + juce::String (juce::roundToInt (r.airDeEss * 100.0f)) + "%");
 
     r.summary = "Heard " + heard.joinIntoString (", ") + ". Set " + did.joinIntoString (", ") + ".";

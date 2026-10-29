@@ -46,6 +46,8 @@ public:
 
     /** Live meters for the GUI. */
     float getCompReductionDb() const noexcept { return engine.getCompReductionDb(); }
+    float getTubeReductionDb() const noexcept { return engine.getTubeReductionDb(); }
+    float getOptoReductionDb() const noexcept { return engine.getOptoReductionDb(); }
     float getSibilance() const noexcept { return engine.getSibilance(); }
     float getPainStress() const noexcept { return engine.getPainStress(); }
     float getInputLevel() const noexcept { return engine.getInputLevel(); }

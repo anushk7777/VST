@@ -10,8 +10,9 @@ struct EngineParams;
 /** The Silk macro: one knob that moves the whole chain together.
 
     50% leaves every setting as it is. Turning it up adds drive, De-harsh
-    depth, compression (threshold and ratio), Cotton and Air in step; turning
-    it down pulls them all back toward transparent. Each target follows its
+    depth, compression (the tube's threshold and ratio, and the opto's
+    reduction), Warmth and Air in step; turning it down pulls them all back
+    toward transparent. Each target follows its
     own curve, and an output trim makes up for the level that the extra (or
     lighter) compression takes, so the knob changes texture and density
     rather than loudness. Sections that are switched off are left alone. */

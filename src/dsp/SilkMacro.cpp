@@ -7,10 +7,11 @@ namespace linen
 namespace
 {
     // Level trim, measured on a sung phrase (tests/SilkTests.cpp): a vocal's
-    // loud phrases reach the compressor's detector at about -14 dB, and auto
-    // gain gives back most, not all, of what extra compression takes.
-    constexpr float vocalDetectorDb = -14.0f;
-    constexpr float trimPerHeldDb = 0.86f;
+    // loud notes reach the compressor at about -10 dB peak. The ADC's auto
+    // gain gives back most of what extra compression takes; the trim covers
+    // a share of the rest.
+    constexpr float vocalPeakDb = -10.0f;
+    constexpr float trimPerHeldDb = 0.2f;
 
     /** Smooth 0..1 ramp between edge0 and edge1. */
     float smoothstep (float edge0, float edge1, float x)
@@ -31,7 +32,7 @@ namespace
     /** How far below its input level a sung vocal leaves the compressor, after auto gain. */
     float heldDownDb (const CompParams& c)
     {
-        return -(SilkCompressor::staticGainDb (vocalDetectorDb, c.thresholdDb, c.ratio) + SilkCompressor::makeupDb (c));
+        return AdcCompressor::staticReductionDb (c, vocalPeakDb) - AdcCompressor::makeupDb (c);
     }
 }
 
@@ -54,12 +55,13 @@ EngineParams SilkMacro::apply (const EngineParams& user, float silk)
 
     if (on.comp)
     {
-        // Threshold and ratio together, so Silk compresses even from a
-        // compressor left at 1:1.
+        // The tube's threshold and ratio together, so Silk compresses even
+        // from a compressor left at 1:1, and the opto levels a little more.
         const float squeeze = amount (silk, 0.25f, 0.85f);
         p.comp.thresholdDb = juce::jlimit (-48.0f, 0.0f, user.comp.thresholdDb - 10.0f * squeeze);
         p.comp.ratio = juce::jlimit (1.0f, 6.0f, user.comp.ratio + squeeze);
-        p.comp.cotton = juce::jlimit (0.0f, 1.0f, user.comp.cotton + 0.4f * amount (silk, 0.2f, 0.9f));
+        p.comp.optoReduction = juce::jlimit (0.0f, 1.0f, user.comp.optoReduction + 0.25f * amount (silk, 0.1f, 0.9f));
+        p.comp.warmth = juce::jlimit (0.0f, 1.0f, user.comp.warmth + 0.4f * amount (silk, 0.2f, 0.9f));
     }
 
     if (on.air)

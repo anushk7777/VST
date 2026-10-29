@@ -81,6 +81,141 @@ juce::Font LinenLookAndFeel::getPopupMenuFont()
 }
 
 //==============================================================================
+namespace
+{
+    /** Where a knob's parts sit, from its body's diameter outward. */
+    struct KnobGeometry
+    {
+        explicit KnobGeometry (float diameter)
+            : body (diameter * 0.5f),
+              ledInner (body + 3.0f),
+              ledOuter (ledInner + juce::jmax (3.5f, diameter * 0.1f)),
+              tickInner (ledOuter + 2.5f),
+              tickOuter (tickInner + 5.0f),
+              numbers (diameter >= 60.0f),
+              numberRadius (tickOuter + 6.5f),
+              reach (numbers ? numberRadius + 5.0f : tickOuter + 1.0f)
+        {
+        }
+
+        float body, ledInner, ledOuter, tickInner, tickOuter;
+        bool numbers;
+        float numberRadius, reach;
+    };
+
+    constexpr float lightAngle = -juce::MathConstants<float>::pi * 0.25f;   // the room's light, from the top left
+
+    float angleAt (float proportion) { return startAngle + proportion * (endAngle - startAngle); }
+
+    /** An engraved line: a dark groove with a lit lower edge. */
+    void engrave (juce::Graphics& g, juce::Line<float> line, float width, float depth)
+    {
+        g.setColour (juce::Colours::white.withAlpha (0.75f));
+        g.drawLine (juce::Line<float> (line.getStart().translated (0.45f, 0.65f), line.getEnd().translated (0.45f, 0.65f)), width * 0.85f);
+        g.setColour (palette::ink (depth));
+        g.drawLine (line, width);
+    }
+
+    void drawScale (juce::Graphics& g, juce::Point<float> c, const KnobGeometry& k, bool bipolar)
+    {
+        // Big knobs get a tick every 5%, the rest every 10%.
+        for (int i = 0; i <= 20; i += k.numbers ? 1 : 2)
+        {
+            const bool major = i % 2 == 0;
+            const float a = angleAt ((float) i / 20.0f);
+            const float outer = major ? k.tickOuter : k.tickInner + 2.6f;
+            engrave (g, { c.getPointOnCircumference (k.tickInner, a), c.getPointOnCircumference (outer, a) },
+                     major ? 1.1f : 0.8f, major ? 0.42f : 0.3f);
+        }
+
+        if (! k.numbers)
+            return;
+
+        g.setFont (fonts::sansMedium (7.5f, 0.0f));
+        const auto label = [&] (const juce::String& text, float proportion)
+        {
+            const auto at = c.getPointOnCircumference (k.numberRadius, angleAt (proportion));
+            const auto box = juce::Rectangle<float> (16.0f, 9.0f).withCentre (at);
+            g.setColour (juce::Colours::white.withAlpha (0.8f));
+            g.drawText (text, box.translated (0.4f, 0.6f), juce::Justification::centred, false);
+            g.setColour (palette::ink (0.5f));
+            g.drawText (text, box, juce::Justification::centred, false);
+        };
+
+        if (bipolar)
+        {
+            label (juce::String (juce::CharPointer_UTF8 ("\xe2\x88\x92")), 0.0f);
+            label ("0", 0.5f);
+            label ("+", 1.0f);
+        }
+        else
+        {
+            for (int n = 0; n <= 10; n += 2)
+                label (juce::String (n), (float) n / 10.0f);
+        }
+    }
+
+    /** The segmented LED ring: lit segments glow cobalt (or the knob's glow
+        colour), the rest are dark glass. */
+    void drawLedRing (juce::Graphics& g, juce::Point<float> c, const KnobGeometry& k, float proportion, bool bipolar,
+                      juce::Colour light, float intensity)
+    {
+        using namespace palette;
+        int count = juce::jlimit (15, 31, juce::roundToInt (k.body * 0.9f));
+        count |= 1;   // odd, so a bipolar ring has a centre segment
+
+        const float spacing = (endAngle - startAngle) / (float) (count - 1);
+        const float mid = 0.5f * (k.ledInner + k.ledOuter), length = k.ledOuter - k.ledInner;
+        const float width = juce::jlimit (1.3f, 2.6f, mid * spacing * 0.36f);
+        const float position = proportion * (float) (count - 1);
+        const float centreIndex = 0.5f * (float) (count - 1);
+
+        juce::Path segment, bloom;
+        segment.addRoundedRectangle (-width * 0.5f, -mid - length * 0.5f, width, length, width * 0.5f);
+        bloom.addRoundedRectangle (-width * 1.4f, -mid - length * 0.75f, width * 2.8f, length * 1.5f, width * 1.4f);
+
+        const auto hot = light.interpolatedWith (electric, 0.5f);
+        for (int i = 0; i < count; ++i)
+        {
+            float level;
+            if (bipolar)
+            {
+                const float lo = juce::jmin (position, centreIndex), hi = juce::jmax (position, centreIndex);
+                level = (float) i >= lo - 0.5f && (float) i <= hi + 0.5f ? 1.0f : 0.0f;
+                if (std::abs (position - centreIndex) < 0.25f)
+                    level = i == (int) centreIndex ? 0.6f : 0.0f;
+            }
+            else
+            {
+                level = proportion <= 0.0f ? 0.0f : juce::jlimit (0.0f, 1.0f, position - (float) i + 1.0f);
+            }
+
+            const auto place = juce::AffineTransform::rotation (startAngle + spacing * (float) i).translated (c);
+            auto seg = segment;
+            seg.applyTransform (place);
+
+            if (level <= 0.0f)
+            {
+                g.setColour (ink (0.17f));
+                g.fillPath (seg);
+                continue;
+            }
+
+            const float l = level * intensity;
+            auto glowPath = bloom;
+            glowPath.applyTransform (place);
+            g.setColour (hot.withAlpha (0.26f * l));
+            g.fillPath (glowPath);
+            g.setColour (light.interpolatedWith (ink (0.17f), 1.0f - l));
+            g.fillPath (seg);
+            g.setColour (juce::Colours::white.withAlpha (0.55f * l));
+            const auto from = c.getPointOnCircumference (k.ledInner + length * 0.3f, startAngle + spacing * (float) i);
+            const auto to = c.getPointOnCircumference (k.ledOuter - length * 0.3f, startAngle + spacing * (float) i);
+            g.drawLine ({ from, to }, width * 0.35f);
+        }
+    }
+}
+
 LinenKnob::LinenKnob (juce::String captionText, float knobDiameter)
     : juce::Slider (juce::Slider::RotaryHorizontalVerticalDrag, juce::Slider::NoTextBox),
       caption (std::move (captionText)),
@@ -93,10 +228,20 @@ LinenKnob::LinenKnob (juce::String captionText, float knobDiameter)
     setTitle (caption);
 }
 
-juce::Rectangle<float> LinenKnob::knobArea() const
+int LinenKnob::getFootprint() const
 {
-    auto area = getLocalBounds().toFloat();
-    return area.removeFromTop (diameter + 12.0f).withSizeKeepingCentre (diameter, diameter);
+    return (int) std::ceil (2.0f * KnobGeometry (diameter).reach);
+}
+
+int LinenKnob::getPreferredHeight() const
+{
+    const KnobGeometry k (diameter);
+    return (int) std::ceil (k.reach + k.body + 24.0f);
+}
+
+juce::Point<float> LinenKnob::knobCentre() const
+{
+    return { (float) getWidth() * 0.5f, KnobGeometry (diameter).reach };
 }
 
 void LinenKnob::mouseEnter (const juce::MouseEvent& e)
@@ -131,106 +276,161 @@ void LinenKnob::paint (juce::Graphics& g)
 {
     using namespace palette;
 
-    const auto area = knobArea();
-    const auto centre = area.getCentre();
-    const float r = area.getWidth() * 0.5f;
+    const KnobGeometry k (diameter);
+    const auto c = knobCentre();
+    const float R = k.body;
     const float proportion = (float) valueToProportionOfLength (getValue());
-    const float angle = startAngle + proportion * (endAngle - startAngle);
+    const float angle = angleAt (proportion);
     const bool active = hovering || isMouseButtonDown();
+    const auto tinted = [this] (juce::Colour col, float amount) { return glow.tint > 0.0f ? col.interpolatedWith (glow.colour, glow.tint * amount) : col; };
 
     // Halo: a soft light around the knob (Silk breathing, Pain burning).
     if (glow.halo > 0.01f)
     {
-        juce::ColourGradient halo (glow.colour.withAlpha (0.7f * glow.halo), centre.x, centre.y,
-                                   glow.colour.withAlpha (0.0f), centre.x + r + 9.0f, centre.y, true);
-        halo.addColour (0.62, glow.colour.withAlpha (0.45f * glow.halo));
+        juce::ColourGradient halo (glow.colour.withAlpha (0.55f * glow.halo), c.x, c.y,
+                                   glow.colour.withAlpha (0.0f), c.x + k.tickOuter + 6.0f, c.y, true);
+        halo.addColour (0.55, glow.colour.withAlpha (0.4f * glow.halo));
         g.setGradientFill (halo);
-        g.fillEllipse (area.expanded (9.0f));
+        g.fillEllipse (juce::Rectangle<float> (2.0f * (k.tickOuter + 6.0f), 2.0f * (k.tickOuter + 6.0f)).withCentre (c));
     }
 
-    // Value track: a hairline ring; the set amount in deep champagne, lit cobalt while touched.
-    {
-        const float arcR = r - 1.5f;
-        juce::Path track;
-        track.addCentredArc (centre.x, centre.y, arcR, arcR, 0.0f, startAngle, endAngle, true);
-        g.setColour (ink (0.10f));
-        g.strokePath (track, juce::PathStrokeType (1.0f, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
+    drawScale (g, c, k, bipolar);
+    drawLedRing (g, c, k, proportion, bipolar, tinted (cobalt, 1.0f), active ? 1.0f : 0.82f);
 
-        juce::Path value;
-        const float from = bipolar ? (startAngle + endAngle) * 0.5f : startAngle;
-        value.addCentredArc (centre.x, centre.y, arcR, arcR, 0.0f, juce::jmin (from, angle), juce::jmax (from, angle), true);
-        if (active)
-        {
-            g.setColour (cobalt.withAlpha (0.22f));
-            g.strokePath (value, juce::PathStrokeType (5.5f, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
-        }
-        const auto arcColour = glow.tint > 0.0f ? champagneDeep.interpolatedWith (glow.colour, glow.tint) : champagneDeep;
-        g.setColour (active ? cobalt : arcColour.withAlpha (0.9f));
-        g.strokePath (value, juce::PathStrokeType (2.0f, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
-    }
-
-    // Recessed seat.
-    const float seatR = r - 7.0f;
-    juce::Path seat;
-    seat.addEllipse (centre.x - seatR, centre.y - seatR, seatR * 2.0f, seatR * 2.0f);
-    g.setColour (well);
-    g.fillPath (seat);
-    wellShadow.render (g, seat);
-
-    // Champagne body (tinted toward the glow colour when asked).
-    const float bodyR = seatR - 5.0f;
-    const auto body = juce::Rectangle<float> (bodyR * 2.0f, bodyR * 2.0f).withCentre (centre);
+    // The body's shadow on the panel.
+    const auto body = juce::Rectangle<float> (2.0f * R, 2.0f * R).withCentre (c);
     juce::Path bodyPath;
     bodyPath.addEllipse (body);
     bodyShadow.render (g, bodyPath);
 
-    const auto tinted = [this] (juce::Colour c) { return glow.tint > 0.0f ? c.interpolatedWith (glow.colour, glow.tint * 0.85f) : c; };
-    g.setGradientFill (juce::ColourGradient (tinted (champagneLight).brighter (0.06f), body.getX() + bodyR * 0.4f, body.getY(),
-                                             tinted (champagne).darker (0.08f), body.getRight() - bodyR * 0.3f, body.getBottom(), false));
+    // Knurled skirt: machined champagne gold, its ridges turning with the value.
+    g.setGradientFill (juce::ColourGradient (tinted (champagneLight, 0.5f).brighter (0.12f), body.getX(), body.getY(),
+                                             tinted (champagneDeep, 0.5f).darker (0.25f), body.getRight(), body.getBottom(), false));
     g.fillPath (bodyPath);
-
     {
-        juce::Graphics::ScopedSaveState save (g);
-        g.reduceClipRegion (bodyPath);
-
-        // Brushed metal: fine concentric rings.
-        for (float rr = bodyR; rr > 2.0f; rr -= 1.4f)
+        const float inner = R * 0.79f, outer = R - 0.7f;
+        const int ridges = juce::jmax (36, juce::roundToInt (R * 2.4f));
+        const float step = juce::MathConstants<float>::twoPi / (float) ridges;
+        for (int i = 0; i < ridges; ++i)
         {
-            const bool light = (int) (rr * 3.7f) % 2 == 0;
-            g.setColour (light ? juce::Colours::white.withAlpha (0.05f) : espresso.withAlpha (0.025f));
-            g.drawEllipse (juce::Rectangle<float> (rr * 2.0f, rr * 2.0f).withCentre (centre), 0.6f);
+            const float a = angle + step * (float) i;
+            const float lit = std::cos (a - lightAngle);
+            g.setColour (espresso.withAlpha (0.12f + 0.2f * juce::jmax (0.0f, -lit)));
+            g.drawLine ({ c.getPointOnCircumference (inner, a), c.getPointOnCircumference (outer, a) }, 0.9f);
+            const float b = a + step * 0.5f;
+            g.setColour (juce::Colours::white.withAlpha (0.06f + 0.4f * juce::jmax (0.0f, std::cos (b - lightAngle))));
+            g.drawLine ({ c.getPointOnCircumference (inner, b), c.getPointOnCircumference (outer, b) }, 0.7f);
         }
-
-        // Specular sheen from the top-left light.
-        juce::ColourGradient sheen (juce::Colours::white.withAlpha (0.5f), centre.x - bodyR * 0.35f, body.getY(),
-                                    juce::Colours::white.withAlpha (0.0f), centre.x, centre.y + bodyR * 0.1f, true);
-        g.setGradientFill (sheen);
-        g.fillEllipse (body);
     }
-
-    g.setColour (tinted (champagneDeep).withAlpha (0.6f));
+    g.setColour (espresso.withAlpha (0.45f));
     g.drawEllipse (body.reduced (0.4f), 0.8f);
 
-    // Slightly concave cap.
-    const float capR = bodyR * 0.62f;
-    const auto cap = juce::Rectangle<float> (capR * 2.0f, capR * 2.0f).withCentre (centre);
-    g.setGradientFill (juce::ColourGradient (tinted (champagne).withAlpha (0.55f), cap.getCentreX(), cap.getY(),
-                                             tinted (champagneLight).brighter (0.1f).withAlpha (0.65f), cap.getCentreX(), cap.getBottom(), false));
+    // The lit LEDs' light caught on the metal's edge.
+    if (proportion > 0.0f || bipolar)
+    {
+        const float from = bipolar ? angleAt (0.5f) : startAngle;
+        juce::Path spill;
+        spill.addCentredArc (c.x, c.y, R - 1.2f, R - 1.2f, 0.0f, juce::jmin (from, angle), juce::jmax (from, angle), true);
+        g.setColour (tinted (electric, 1.0f).withAlpha (active ? 0.4f : 0.28f));
+        g.strokePath (spill, juce::PathStrokeType (1.6f, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
+    }
+
+    // Polished bevel: lit along its lower right, where it faces the light back.
+    const float bevelOuter = R * 0.79f, faceR = R * 0.69f;
+    {
+        juce::Path bevel;
+        bevel.addEllipse (juce::Rectangle<float> (2.0f * bevelOuter, 2.0f * bevelOuter).withCentre (c));
+        bevel.addEllipse (juce::Rectangle<float> (2.0f * faceR, 2.0f * faceR).withCentre (c));
+        bevel.setUsingNonZeroWinding (false);
+        g.setGradientFill (juce::ColourGradient (tinted (champagneDeep, 0.5f).darker (0.1f), c.x - bevelOuter, c.y - bevelOuter,
+                                                 tinted (ivory, 0.3f), c.x + bevelOuter * 0.7f, c.y + bevelOuter * 0.7f, false));
+        g.fillPath (bevel);
+        g.setColour (juce::Colours::white.withAlpha (0.55f));
+        juce::Path rimLight;
+        rimLight.addCentredArc (c.x, c.y, bevelOuter - 0.6f, bevelOuter - 0.6f, 0.0f, 0.55f, 2.6f, true);
+        g.strokePath (rimLight, juce::PathStrokeType (0.8f));
+    }
+
+    // Brushed top, turned on a lathe: fine rings and a bright streak across the light.
+    const auto face = juce::Rectangle<float> (2.0f * faceR, 2.0f * faceR).withCentre (c);
+    juce::Path facePath;
+    facePath.addEllipse (face);
+    g.setGradientFill (juce::ColourGradient (tinted (champagneLight, 0.4f).brighter (0.08f), c.x, face.getY(),
+                                             tinted (champagne, 0.4f), c.x, face.getBottom(), false));
+    g.fillPath (facePath);
+    {
+        juce::Graphics::ScopedSaveState save (g);
+        g.reduceClipRegion (facePath);
+        for (float rr = faceR; rr > 1.5f; rr -= 1.2f)
+        {
+            g.setColour ((int) (rr * 4.3f) % 2 == 0 ? juce::Colours::white.withAlpha (0.07f) : espresso.withAlpha (0.035f));
+            g.drawEllipse (juce::Rectangle<float> (2.0f * rr, 2.0f * rr).withCentre (c), 0.55f);
+        }
+
+        // Lathe-turned metal throws its highlight as a band through the centre,
+        // across the direction of the light.
+        for (const float side : { 1.0f, -1.0f })
+        {
+            juce::Path wedge;
+            const float spread = 0.42f;
+            const float a0 = lightAngle + (side > 0.0f ? 0.0f : juce::MathConstants<float>::pi);
+            wedge.startNewSubPath (c);
+            wedge.lineTo (c.getPointOnCircumference (faceR * 1.1f, a0 - spread));
+            wedge.lineTo (c.getPointOnCircumference (faceR * 1.1f, a0 + spread));
+            wedge.closeSubPath();
+            juce::ColourGradient streak (juce::Colours::white.withAlpha (side > 0.0f ? 0.42f : 0.18f),
+                                         c.getPointOnCircumference (faceR, a0),
+                                         juce::Colours::white.withAlpha (0.0f), c, true);
+            g.setGradientFill (streak);
+            g.fillPath (wedge);
+        }
+    }
+    g.setColour (espresso.withAlpha (0.25f));
+    g.drawEllipse (face.reduced (0.3f), 0.6f);
+
+    // The index: an engraved line inlaid with lit cobalt, out to the face's edge.
+    const auto indexColour = tinted (active ? cobaltLight : cobalt, 1.0f);
+    {
+        const juce::Line<float> index (c.getPointOnCircumference (R * 0.42f, angle), c.getPointOnCircumference (faceR - 1.2f, angle));
+        g.setColour (electric.withAlpha (active ? 0.4f : 0.25f));
+        g.drawLine (index, 4.2f);
+        g.setColour (espresso.withAlpha (0.55f));
+        g.drawLine (index, 2.4f);
+        g.setColour (indexColour.interpolatedWith (juce::Colours::white, active ? 0.45f : 0.2f));
+        g.drawLine (index, 1.3f);
+    }
+
+    // Sapphire glass cap, the index glowing through it.
+    const float capR = R * 0.3f;
+    const auto cap = juce::Rectangle<float> (2.0f * capR, 2.0f * capR).withCentre (c);
+    g.setGradientFill (juce::ColourGradient (tinted (champagneLight, 0.5f), cap.getX(), cap.getY(),
+                                             tinted (champagneDeep, 0.5f).darker (0.3f), cap.getRight(), cap.getBottom(), false));
+    g.fillEllipse (cap.expanded (1.3f));
+    juce::ColourGradient glass (tinted (cobaltDeep, 0.8f), c.x - capR * 0.3f, c.y - capR * 0.35f,
+                                tinted (sapphire, 0.8f).darker (0.35f), c.x + capR, c.y + capR, true);
+    glass.addColour (0.6, tinted (sapphire, 0.8f));
+    g.setGradientFill (glass);
     g.fillEllipse (cap);
-    g.setColour (juce::Colours::white.withAlpha (0.35f));
-    g.drawEllipse (cap.translated (0.0f, 0.6f), 0.7f);
+    {
+        const juce::Line<float> filament (c.getPointOnCircumference (capR * 0.15f, angle), c.getPointOnCircumference (capR * 0.92f, angle));
+        g.setColour (electric.withAlpha (0.45f));
+        g.drawLine (filament, 2.6f);
+        g.setColour (indexColour.interpolatedWith (juce::Colours::white, 0.55f));
+        g.drawLine (filament, 1.0f);
+    }
+    g.setColour (juce::Colours::white.withAlpha (0.7f));
+    g.fillEllipse (juce::Rectangle<float> (capR * 0.62f, capR * 0.36f).withCentre ({ c.x - capR * 0.3f, c.y - capR * 0.5f }));
+    juce::Path crescent;
+    crescent.addCentredArc (c.x, c.y, capR * 0.78f, capR * 0.78f, 0.0f, 1.9f, 3.1f, true);
+    g.setColour (cobaltLight.withAlpha (0.35f));
+    g.strokePath (crescent, juce::PathStrokeType (0.8f, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
 
-    // Pointer.
-    const auto tip = centre.getPointOnCircumference (bodyR * 0.78f, angle);
-    g.setColour (active ? cobaltDeep : espresso.withAlpha (0.85f));
-    g.fillEllipse (juce::Rectangle<float> (4.2f, 4.2f).withCentre (tip));
-
-    // Caption, or the value while hovering/dragging.
-    auto textArea = getLocalBounds().toFloat().withTrimmedTop (area.getBottom() + 4.0f - getLocalBounds().toFloat().getY());
+    // Caption in the gap at the foot of the ring, or the value while touched.
     const auto text = active ? getTextFromValue (getValue()) : caption.toUpperCase();
+    const auto textBox = juce::Rectangle<float> ((float) getWidth(), 14.0f).withPosition (0.0f, c.y + R + 6.0f);
     g.setColour (active ? espresso : ink (0.62f));
-    g.setFont (fonts::sansMedium (11.0f, active ? 0.04f : 0.16f));
-    g.drawText (text, textArea.removeFromTop (16.0f), juce::Justification::centred, false);
+    g.setFont (fonts::sansMedium (9.5f, active ? 0.04f : 0.16f));
+    g.drawText (text, textBox, juce::Justification::centred, false);
 }
 
 //==============================================================================
@@ -315,48 +515,113 @@ void LinenPill::paintButton (juce::Graphics& g, bool highlighted, bool)
 }
 
 //==============================================================================
-LinenPower::LinenPower()
+LinenToggle::LinenToggle()
+    : ticker (this, [this] (double now)
+      {
+          if (! flipping)
+              return;
+          if (flipStart <= 0.0)
+              flipStart = now;
+          const float t = juce::jlimit (0.0f, 1.0f, (float) ((now - flipStart) / 0.08));
+          shown = from + (to - from) * (t * t * (3.0f - 2.0f * t));
+          flipping = t < 1.0f;
+          repaint();
+      })
 {
     setClickingTogglesState (true);
     setMouseCursor (juce::MouseCursor::PointingHandCursor);
 }
 
-void LinenPower::paintButton (juce::Graphics& g, bool highlighted, bool)
+void LinenToggle::paintButton (juce::Graphics& g, bool highlighted, bool down)
 {
     using namespace palette;
 
-    const auto bounds = getLocalBounds().toFloat();
-    const auto c = bounds.getCentre();
-    const float d = juce::jmin (bounds.getWidth(), bounds.getHeight()) - 2.0f;
-    const auto disc = juce::Rectangle<float> (d, d).withCentre (c);
-    const bool on = getToggleState();
-
-    if (on)
+    // Follow the state: flip over when it changes (by click or automation).
+    const float target = getToggleState() ? 1.0f : 0.0f;
+    if (shown < 0.0f)
+        shown = to = target;
+    else if (! juce::exactlyEqual (target, to))
     {
-        // A soft cobalt bloom, then a champagne cap.
-        juce::ColourGradient bloom (electric.withAlpha (0.3f), c.x, c.y, electric.withAlpha (0.0f), c.x + d * 0.85f, c.y, true);
-        g.setGradientFill (bloom);
-        g.fillEllipse (disc.expanded (d * 0.3f));
-        g.setGradientFill (juce::ColourGradient (champagneLight, disc.getX(), disc.getY(), champagne, disc.getX(), disc.getBottom(), false));
-        g.fillEllipse (disc);
-        g.setColour (champagneDeep.withAlpha (0.8f));
+        from = shown;
+        to = target;
+        flipStart = 0.0;
+        flipping = true;
     }
-    else
-    {
-        g.setColour (highlighted ? ivory : ivory.withAlpha (0.6f));
-        g.fillEllipse (disc);
-        g.setColour (highlighted ? champagneDeep.withAlpha (0.8f) : rim);
-    }
-    g.drawEllipse (disc.reduced (0.4f), 0.8f);
 
-    // The power glyph: an open ring with a bar through its gap.
-    const float r = d * 0.25f;
-    juce::Path glyph;
-    glyph.addCentredArc (c.x, c.y, r, r, 0.0f, 0.7f, juce::MathConstants<float>::twoPi - 0.7f, true);
-    glyph.startNewSubPath (c.x, c.y - r * 1.3f);
-    glyph.lineTo (c.x, c.y - r * 0.2f);
-    g.setColour (on ? cobalt : ink (highlighted ? 0.6f : 0.38f));
-    g.strokePath (glyph, juce::PathStrokeType (1.3f, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
+    const auto b = getLocalBounds().toFloat();
+    const float unit = juce::jmin (b.getWidth(), b.getHeight() * 0.68f);
+    const auto pivot = b.getCentre();
+
+    // Washer and hex nut.
+    const float washerR = unit * 0.46f, nutR = unit * 0.36f;
+    g.setColour (espresso.withAlpha (0.22f));
+    g.fillEllipse (juce::Rectangle<float> (2.0f * washerR, 2.0f * washerR).withCentre (pivot).translated (0.6f, 1.2f));
+    g.setGradientFill (juce::ColourGradient (chromeLight, pivot.x - washerR, pivot.y - washerR, chromeDark, pivot.x + washerR, pivot.y + washerR, false));
+    g.fillEllipse (juce::Rectangle<float> (2.0f * washerR, 2.0f * washerR).withCentre (pivot));
+
+    juce::Path nut;
+    for (int i = 0; i < 6; ++i)
+    {
+        const auto v = pivot.getPointOnCircumference (nutR, juce::MathConstants<float>::pi / 6.0f + (float) i * juce::MathConstants<float>::pi / 3.0f);
+        i == 0 ? nut.startNewSubPath (v) : nut.lineTo (v);
+    }
+    nut.closeSubPath();
+    g.setGradientFill (juce::ColourGradient (chromeLight, pivot.x - nutR, pivot.y - nutR, chrome.darker (0.25f), pivot.x + nutR, pivot.y + nutR, false));
+    g.fillPath (nut);
+    g.setColour (chromeDark.withAlpha (0.8f));
+    g.strokePath (nut, juce::PathStrokeType (0.6f));
+    g.setColour (espresso.withAlpha (0.85f));
+    g.fillEllipse (juce::Rectangle<float> (unit * 0.3f, unit * 0.3f).withCentre (pivot));
+
+    // The lever leans about 35 degrees off the panel, up for IN, down for OUT;
+    // as it flips it swings through pointing straight out at you.
+    const float tilt = (shown * 2.0f - 1.0f) * juce::degreesToRadians (35.0f);
+    const float length = unit * 1.5f;
+    const auto tip = pivot.translated (0.0f, -length * std::sin (tilt));
+    const float closeness = 1.0f + 0.25f * std::cos (tilt);   // closer to you, a little larger
+    const float tipW = unit * 0.56f * closeness, tipH = unit * 0.46f * closeness;
+
+    // Its shadow, cast down and to the right.
+    g.setColour (espresso.withAlpha (0.2f));
+    {
+        juce::Path shade;
+        shade.addLineSegment ({ pivot.translated (1.0f, 2.0f), tip.translated (unit * 0.28f, unit * 0.5f) }, unit * 0.24f);
+        g.fillPath (shade);
+        g.fillEllipse (juce::Rectangle<float> (tipW, tipH).withCentre (tip.translated (unit * 0.3f, unit * 0.55f)));
+    }
+
+    // Shaft: chrome, a bright streak down its middle.
+    {
+        const float w0 = unit * 0.2f, w1 = unit * 0.26f * closeness;
+        juce::Path shaft;
+        shaft.startNewSubPath (pivot.x - w0 * 0.5f, pivot.y);
+        shaft.lineTo (tip.x - w1 * 0.5f, tip.y);
+        shaft.lineTo (tip.x + w1 * 0.5f, tip.y);
+        shaft.lineTo (pivot.x + w0 * 0.5f, pivot.y);
+        shaft.closeSubPath();
+        juce::ColourGradient metal (chromeDark, pivot.x - w1 * 0.5f, pivot.y, chromeDark.darker (0.2f), pivot.x + w1 * 0.5f, pivot.y, false);
+        metal.addColour (0.3, chromeLight);
+        metal.addColour (0.55, chrome);
+        g.setGradientFill (metal);
+        g.fillPath (shaft);
+    }
+
+    // The bat: a rounded end, lit from the top left.
+    const auto bat = juce::Rectangle<float> (tipW, tipH).withCentre (tip);
+    juce::ColourGradient batMetal (juce::Colours::white, bat.getX() + tipW * 0.3f, bat.getY() + tipH * 0.25f,
+                                   chromeDark.darker (0.3f), bat.getRight(), bat.getBottom(), true);
+    batMetal.addColour (0.35, chromeLight);
+    batMetal.addColour (0.7, chrome);
+    g.setGradientFill (batMetal);
+    g.fillEllipse (bat);
+    g.setColour (chromeDark.withAlpha (0.9f));
+    g.drawEllipse (bat, 0.6f);
+
+    if (highlighted || down)
+    {
+        g.setColour (cobalt.withAlpha (down ? 0.35f : 0.18f));
+        g.drawEllipse (juce::Rectangle<float> (2.0f * washerR + 3.0f, 2.0f * washerR + 3.0f).withCentre (pivot), 1.0f);
+    }
 }
 
 //==============================================================================

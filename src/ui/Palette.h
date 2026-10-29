@@ -34,5 +34,15 @@ namespace linen::palette
     inline const juce::Colour crimsonDeep { 0xff9e2a2b };
     inline const juce::Colour crimson     { 0xffd1493f };
 
+    // Chrome (toggles, screws) and the sapphire glass in the knob caps.
+    inline const juce::Colour chromeLight { 0xfff7f6f3 };
+    inline const juce::Colour chrome      { 0xffbdbbb6 };
+    inline const juce::Colour chromeDark  { 0xff63615c };
+    inline const juce::Colour sapphire    { 0xff081a5c };
+
+    // The VU meter's backlit face.
+    inline const juce::Colour vuFace      { 0xfff3e8cc };
+    inline const juce::Colour vuInk       { 0xff2a2420 };
+
     inline juce::Colour ink (float alpha) { return espresso.withAlpha (alpha); }
 }

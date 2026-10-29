@@ -22,10 +22,12 @@ inline const std::array<Preset, 9> factory {{
     // Untouched: the output is the input, bit for bit (delayed by the latency).
     { "Clean", {} },
 
+    // The ADC compressor in every preset: the TUBE catches the peaks, the
+    // OPTO levels the line underneath, Warmth (comp_cotton) colours both.
     { "House Silk", {
         { id::preampDrive, 0.3f },
         { id::deharshDepth, 5.0f },
-        { id::compRatio, 2.0f }, { id::compCotton, 0.5f },
+        { id::compRatio, 2.0f }, { id::adcOptoReduction, 0.35f }, { id::compCotton, 0.5f },
         { id::airAmount, 0.3f }, { id::airDeEss, 0.5f } } },
 
     // Tone: a little weight out below ~450 Hz, a little presence from 3 kHz
@@ -36,26 +38,28 @@ inline const std::array<Preset, 9> factory {{
         { id::preampDrive, 0.35f },
         { id::eqLowFreq, 3 }, { id::eqLowGain, -1.0f }, { id::eqMidFreq, 4 }, { id::eqMidGain, -1.0f }, { id::eqHighGain, 2.5f },
         { id::deharshDepth, 6.0f }, { id::deharshDetail, 0.55f },
-        { id::compThreshold, -20.0f }, { id::compRatio, 2.5f }, { id::compAttack, 15.0f }, { id::compCotton, 0.65f },
+        { id::compThreshold, -20.0f }, { id::compRatio, 2.5f }, { id::compAttack, 15.0f },
+        { id::adcOptoReduction, 0.4f }, { id::compCotton, 0.65f },
         { id::airAmount, 0.45f }, { id::airDeEss, 0.6f } } },
 
     { "Breathy Intimate", {
         { id::toneLowFreq, 120.0f }, { id::toneLowGain, -3.0f },
         { id::preampDrive, 0.2f }, { id::eqHighGain, 1.0f },
         { id::deharshDepth, 4.0f },
-        { id::compThreshold, -24.0f }, { id::compRatio, 2.0f }, { id::compAttack, 25.0f }, { id::compCotton, 0.4f },
+        { id::compThreshold, -24.0f }, { id::compRatio, 2.0f }, { id::compAttack, 25.0f },
+        { id::adcOptoReduction, 0.3f }, { id::compCotton, 0.4f },
         { id::airAmount, 0.7f }, { id::airDeEss, 0.5f } } },
 
     { "Warm & Close", {
         { id::toneLowFreq, 70.0f }, { id::toneLowGain, -2.0f },
-        { id::preampDrive, 0.45f }, { id::eqLowFreq, 4 }, { id::eqLowGain, 1.5f },
+        { id::preampDrive, 0.4f }, { id::eqLowFreq, 4 }, { id::eqLowGain, 1.5f },
         { id::deharshDepth, 5.0f },
-        { id::compThreshold, -22.0f }, { id::compRatio, 3.0f }, { id::compCotton, 0.8f },
+        { id::compThreshold, -22.0f }, { id::compRatio, 2.5f }, { id::adcOptoReduction, 0.4f }, { id::compCotton, 0.6f },
         { id::airAmount, 0.2f }, { id::airDeEss, 0.5f } } },
 
     { "Transparent Polish", {
         { id::deharshDepth, 3.0f }, { id::deharshDetail, 0.7f },
-        { id::compThreshold, -16.0f }, { id::compRatio, 1.5f },
+        { id::compThreshold, -16.0f }, { id::compRatio, 1.5f }, { id::adcOptoReduction, 0.2f },
         { id::airAmount, 0.15f }, { id::airDeEss, 0.4f } } },
 
     { "De-harsh Only", {
@@ -66,7 +70,7 @@ inline const std::array<Preset, 9> factory {{
         { id::toneLowFreq, 120.0f }, { id::toneLowGain, -3.0f },
         { id::preampDrive, 0.3f },
         { id::deharshDepth, 5.0f },
-        { id::compRatio, 2.0f }, { id::compCotton, 0.6f },
+        { id::compRatio, 2.0f }, { id::adcOptoReduction, 0.35f }, { id::compCotton, 0.6f },
         { id::airAmount, 0.3f }, { id::airDeEss, 0.5f } } },
 
     { "Torn Linen", {
@@ -74,7 +78,7 @@ inline const std::array<Preset, 9> factory {{
         { id::toneLowFreq, 120.0f }, { id::toneLowGain, -3.0f },
         { id::preampDrive, 0.3f },
         { id::deharshDepth, 5.0f },
-        { id::compThreshold, -20.0f }, { id::compRatio, 2.5f }, { id::compCotton, 0.5f },
+        { id::compThreshold, -20.0f }, { id::compRatio, 2.5f }, { id::adcOptoReduction, 0.3f }, { id::compCotton, 0.5f },
         { id::airAmount, 0.3f }, { id::airDeEss, 0.5f } } },
 }};
 

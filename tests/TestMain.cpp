@@ -2,11 +2,22 @@
 
 int main (int argc, char** argv)
 {
-    juce::ignoreUnused (argc, argv);
-
     juce::UnitTestRunner runner;
     runner.setAssertOnFailure (false);
-    runner.runTestsInCategory ("Linen");
+
+    // LinenTests [name]: only the suites whose names contain name (all by default).
+    if (argc > 1)
+    {
+        juce::Array<juce::UnitTest*> chosen;
+        for (auto* test : juce::UnitTest::getTestsInCategory ("Linen"))
+            if (test->getName().containsIgnoreCase (argv[1]))
+                chosen.add (test);
+        runner.runTests (chosen);
+    }
+    else
+    {
+        runner.runTestsInCategory ("Linen");
+    }
 
     int failures = 0;
     for (int i = 0; i < runner.getNumResults(); ++i)
