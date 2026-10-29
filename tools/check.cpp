@@ -225,65 +225,69 @@ namespace
                double sr, const Null& result)
     {
         constexpr int width = 1400, height = 860, left = 70, right = 40;
-        juce::Image image (juce::Image::RGB, width, height, true);
-        juce::Graphics g (image);
-
-        const auto sans = juce::Typeface::createSystemTypefaceFor (LinenBinary::InterRegular_ttf, (size_t) LinenBinary::InterRegular_ttfSize);
-        const auto serif = juce::Typeface::createSystemTypefaceFor (LinenBinary::CormorantGaramondMedium_ttf,
-                                                                    (size_t) LinenBinary::CormorantGaramondMedium_ttfSize);
-        const auto font = [] (const juce::Typeface::Ptr& face, float h) { return juce::Font (juce::FontOptions (face).withHeight (h)); };
-
-        const juce::Colour paper (0xfff6f3ec), ink (0xff221e1c), champagne (0xffb08f55), cobalt (0xff1f4fff);
-        g.fillAll (paper);
-
-        g.setColour (ink);
-        g.setFont (font (serif, 34.0f));
-        g.drawText ("Linen, Clean preset: null (phase) test", left, 22, width - left - right, 44, juce::Justification::centredLeft);
-        g.setColour (ink.withAlpha (0.6f));
-        g.setFont (font (sans, 15.0f));
-        g.drawText ("The real Linen.vst3, loaded like a DAW loads it, " + juce::String (sr / 1000.0, 1) + " kHz stereo. "
-                    "Its output, lined up by the " + juce::String (latency) + "-sample latency it reports, minus your untouched audio.",
-                    left, 66, width - left - right, 22, juce::Justification::centredLeft);
-
-        const int samples = in.getNumSamples() - latency;
-        const auto drawPanel = [&] (int top, int panelHeight, const juce::String& title, juce::Colour colour, auto&& valueAt, float scale)
+        // A software image: drawn at once on every platform (a native one may
+        // defer its drawing until the Graphics context goes away).
+        juce::Image image (juce::Image::RGB, width, height, true, juce::SoftwareImageType());
         {
-            const juce::Rectangle<int> area (left, top + 26, width - left - right, panelHeight - 26);
-            g.setColour (ink.withAlpha (0.75f));
+            juce::Graphics g (image);
+
+            const auto sans = juce::Typeface::createSystemTypefaceFor (LinenBinary::InterRegular_ttf, (size_t) LinenBinary::InterRegular_ttfSize);
+            const auto serif = juce::Typeface::createSystemTypefaceFor (LinenBinary::CormorantGaramondMedium_ttf,
+                                                                        (size_t) LinenBinary::CormorantGaramondMedium_ttfSize);
+            const auto font = [] (const juce::Typeface::Ptr& face, float h) { return juce::Font (juce::FontOptions (face).withHeight (h)); };
+
+            const juce::Colour paper (0xfff6f3ec), ink (0xff221e1c), champagne (0xffb08f55), cobalt (0xff1f4fff);
+            g.fillAll (paper);
+
+            g.setColour (ink);
+            g.setFont (font (serif, 34.0f));
+            g.drawText ("Linen, Clean preset: null (phase) test", left, 22, width - left - right, 44, juce::Justification::centredLeft);
+            g.setColour (ink.withAlpha (0.6f));
             g.setFont (font (sans, 15.0f));
-            g.drawText (title, left, top, width - left - right, 22, juce::Justification::centredLeft);
-            g.setColour (juce::Colour (0xffebe4d8));
-            g.fillRoundedRectangle (area.toFloat(), 10.0f);
-            g.setColour (ink.withAlpha (0.15f));
-            g.drawHorizontalLine (area.getCentreY(), (float) area.getX(), (float) area.getRight());
+            g.drawText ("The real Linen.vst3, loaded like a DAW loads it, " + juce::String (sr / 1000.0, 1) + " kHz stereo. "
+                        "Its output, lined up by the " + juce::String (latency) + "-sample latency it reports, minus your untouched audio.",
+                        left, 66, width - left - right, 22, juce::Justification::centredLeft);
 
-            g.setColour (colour);
-            for (int x = 0; x < area.getWidth(); ++x)
+            const int samples = in.getNumSamples() - latency;
+            const auto drawPanel = [&] (int top, int panelHeight, const juce::String& title, juce::Colour colour, auto&& valueAt, float scale)
             {
-                const int i0 = (int) ((int64_t) x * samples / area.getWidth()), i1 = (int) ((int64_t) (x + 1) * samples / area.getWidth());
-                float lo = 0.0f, hi = 0.0f;
-                for (int i = i0; i < juce::jmax (i0 + 1, i1); ++i)
+                const juce::Rectangle<int> area (left, top + 26, width - left - right, panelHeight - 26);
+                g.setColour (ink.withAlpha (0.75f));
+                g.setFont (font (sans, 15.0f));
+                g.drawText (title, left, top, width - left - right, 22, juce::Justification::centredLeft);
+                g.setColour (juce::Colour (0xffebe4d8));
+                g.fillRoundedRectangle (area.toFloat(), 10.0f);
+                g.setColour (ink.withAlpha (0.15f));
+                g.drawHorizontalLine (area.getCentreY(), (float) area.getX(), (float) area.getRight());
+
+                g.setColour (colour);
+                for (int x = 0; x < area.getWidth(); ++x)
                 {
-                    const float v = juce::jlimit (-1.0f, 1.0f, valueAt (i) * scale);
-                    lo = juce::jmin (lo, v);
-                    hi = juce::jmax (hi, v);
+                    const int i0 = (int) ((int64_t) x * samples / area.getWidth()), i1 = (int) ((int64_t) (x + 1) * samples / area.getWidth());
+                    float lo = 0.0f, hi = 0.0f;
+                    for (int i = i0; i < juce::jmax (i0 + 1, i1); ++i)
+                    {
+                        const float v = juce::jlimit (-1.0f, 1.0f, valueAt (i) * scale);
+                        lo = juce::jmin (lo, v);
+                        hi = juce::jmax (hi, v);
+                    }
+                    const float half = (float) area.getHeight() * 0.46f;
+                    g.drawVerticalLine (area.getX() + x, (float) area.getCentreY() - hi * half, (float) area.getCentreY() - lo * half + 1.0f);
                 }
-                const float half = (float) area.getHeight() * 0.46f;
-                g.drawVerticalLine (area.getX() + x, (float) area.getCentreY() - hi * half, (float) area.getCentreY() - lo * half + 1.0f);
-            }
-        };
+            };
 
-        drawPanel (110, 220, "1. Your audio (input): noise, a sung vowel, a full-scale sweep, silence", ink.withAlpha (0.7f),
-                   [&] (int i) { return in.getSample (0, i); }, 1.0f);
-        drawPanel (350, 220, "2. Linen's output on Clean, lined up by its latency", champagne,
-                   [&] (int i) { return out.getSample (0, i + latency); }, 1.0f);
-        drawPanel (590, 220, "3. Output minus input, zoomed in 1,000,000x: any difference would show here", cobalt,
-                   [&] (int i) { return out.getSample (0, i + latency) - in.getSample (0, i); }, 1.0e6f);
+            drawPanel (110, 220, "1. Your audio (input): noise, a sung vowel, a full-scale sweep, silence", ink.withAlpha (0.7f),
+                       [&] (int i) { return in.getSample (0, i); }, 1.0f);
+            drawPanel (350, 220, "2. Linen's output on Clean, lined up by its latency", champagne,
+                       [&] (int i) { return out.getSample (0, i + latency); }, 1.0f);
+            drawPanel (590, 220, "3. Output minus input, zoomed in 1,000,000x: any difference would show here", cobalt,
+                       [&] (int i) { return out.getSample (0, i + latency) - in.getSample (0, i); }, 1.0e6f);
 
-        g.setColour (result.exact() ? cobalt : juce::Colour (0xffd1493f));
-        g.setFont (font (sans, 17.0f));
-        g.drawText ((result.exact() ? juce::String ("Perfect null: ") : juce::String ("NOT a null: ")) + result.describe(),
-                    left, 818, width - left - right, 26, juce::Justification::centredLeft);
+            g.setColour (result.exact() ? cobalt : juce::Colour (0xffd1493f));
+            g.setFont (font (sans, 17.0f));
+            g.drawText ((result.exact() ? juce::String ("Perfect null: ") : juce::String ("NOT a null: ")) + result.describe(),
+                        left, 818, width - left - right, 26, juce::Justification::centredLeft);
+        }
 
         file.deleteFile();
         juce::FileOutputStream stream (file);
